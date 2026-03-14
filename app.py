@@ -15,9 +15,11 @@ import streamlit as st
 from rag.ollama_client import chat
 from rag.pdf_parse import extract_pages
 from rag.chunking import chunk_pages
-from rag.store import VectorStore
+from rag.semantic_store import SemanticVectorStore
 from rag.prompts import SYSTEM_PROMPT, build_user_prompt
 from rag.validators import extract_source_ids
+from rag.retrieval_utils import deduplicate_retrieved_chunks
+from rag.reranker import rerank_chunks
 
 CHAT_MODEL = "mistral"
 
@@ -54,6 +56,11 @@ with st.sidebar:
         if chunks:
             st.write(f"First chunk preview: {chunks[0]['text'][:500]}")
             st.write(f"First chunk length (chars): {len(chunks[0]['text'])}")
+            avg_chars = sum(len(c["text"]) for c in chunks) / len(chunks)
+            avg_tokens_est = sum(len(c["text"].split()) for c in chunks) / len(chunks)
+
+            st.write(f"Average chunk length (chars): {avg_chars:.2f}")
+            st.write(f"Average chunk length (approx words): {avg_tokens_est:.2f}")
 
         texts = [c["text"] for c in chunks]
         metas = [{
@@ -62,8 +69,8 @@ with st.sidebar:
             "page_end": c["metadata"]["page_end"],
         } for c in chunks]
 
-        with st.spinner("Building local retrieval index..."):
-            store = VectorStore()
+        with st.spinner("Building semantic retrieval index..."):
+            store = SemanticVectorStore(model_name="all-MiniLM-L6-v2")
             store.add(texts, metas)
 
         st.session_state.store = store
@@ -74,8 +81,8 @@ with st.sidebar:
 
     st.divider()
     st.header("2) Retrieval Controls")
-    top_k = st.slider("top_k", 1, 10, 5)
-    min_score = st.slider("min_score (evidence gate)", 0.0, 1.0, 0.10, 0.01)
+    top_k = st.slider("top_k", 1, 10, 3)
+    min_score = st.slider("min_score (evidence gate)", 0.0, 1.0, 0.50, 0.01)
     show_debug = st.checkbox("Show debug evidence", value=True)
 
 if not st.session_state.doc_loaded:
@@ -87,7 +94,19 @@ else:
     if st.button("Ask") and question.strip():
         store = st.session_state.store
 
-        retrieved = store.search(question, top_k=top_k)
+        retrieved_raw = store.search(question, top_k=top_k)
+        retrieved_dedup = deduplicate_retrieved_chunks(retrieved_raw, similarity_threshold=0.80)
+        retrieved = rerank_chunks(question, retrieved_dedup)
+        
+        # keep only the most relevant chunks
+        max_context_chunks = 1
+        retrieved = retrieved[:max_context_chunks]
+        
+        if show_debug:
+            st.write(f"Retrieved before deduplication: {len(retrieved_raw)}")
+            st.write(f"Retrieved after deduplication: {len(retrieved_dedup)}")
+            st.write(f"Retrieved after reranking: {len(retrieved)}")
+            st.write(f"Chunks passed to LLM: {len(retrieved)}")
 
         if (not retrieved) or (retrieved[0]["score"] < min_score):
             st.warning("Refusal: insufficient evidence retrieved from the document.")
