@@ -235,6 +235,7 @@ Only the top-ranked evidence chunk is passed to the LLM, preventing side clauses
 
 ## Inline citations
 Citations remain directly attached to claims in the answer.
+
 ---
 
 # Hallucination Prevention
