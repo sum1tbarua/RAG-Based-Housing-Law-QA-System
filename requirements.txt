@@ -1,0 +1,6 @@
+streamlit==1.38.0
+pypdf==4.3.1
+numpy==1.26.4
+tiktoken==0.7.0
+requests==2.32.3
+scikit-learn==1.5.1
