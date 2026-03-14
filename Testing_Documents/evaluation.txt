@@ -1,0 +1,86 @@
+Evaluation Questions:
+What responsibilities does a landlord have regarding repairs?
+How much notice must a landlord give before eviction?
+What can a tenant do if the landlord refuses to fix something?
+How long does a landlord have to return a security deposit?
+What rights does a tenant have regarding maintenance?
+What is the federal tax rate for rental income?
+What is the population of Michigan?
+
+Testing parameters:
+1. Top-k: 3
+2. min_score: 0.50
+
+
+Evaluation Answers:
+[
+    0:{
+        "question":"What responsibilities does a landlord have regarding repairs?"
+        "refused":false
+        "top_score":0.7503594160079956
+        "top_pages":[
+        0:36
+        1:36
+        ]
+    }
+
+    1:{
+        "question":"How much notice must a landlord give before eviction?"
+        "refused":false
+        "top_score":0.6267060041427612
+        "top_pages":[
+        0:58
+        1:58
+        ]
+    }
+
+    2:{
+        "question":"What can a tenant do if the landlord refuses to fix something?"
+        "refused":false
+        "top_score":0.6590511798858643
+        "top_pages":[
+        0:36
+        1:36
+        ]
+    }
+
+    3:{
+        "question":"How long does a landlord have to return a security deposit?"
+        "refused":false
+        "top_score":0.7061556577682495
+        "top_pages":[
+        0:11
+        1:11
+        ]
+    }
+
+    4:{
+        "question":"What rights does a tenant have regarding maintenance?"
+        "refused":false
+        "top_score":0.6940436363220215
+        "top_pages":[
+        0:28
+        1:29
+        ]
+    }
+
+    5:{
+        "question":"What is the federal tax rate for rental income?"
+        "refused":true
+        "top_score":0.4490292966365814
+        "top_pages":[
+        0:60
+        1:60
+        ]
+    }
+
+    6:{
+        "question":"What is the population of Michigan?"
+        "refused":true
+        "top_score":0.28821900486946106
+        "top_pages":[
+        0:5
+        1:5
+        ]
+    }
+]
