@@ -1,0 +1,5 @@
+.venv/
+progress/
+testing_pdfs/
+.DS_Store
+
