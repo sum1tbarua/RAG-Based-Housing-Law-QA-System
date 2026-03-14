@@ -1,6 +1,5 @@
 .venv/
 progress/
-testing_pdfs/
 .DS_Store
 __pycache__
 
