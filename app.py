@@ -8,7 +8,6 @@ Purposes -
 5. Shows debug evidence so we can improve performance
 '''
 
-# app.py
 import os
 import tempfile
 import streamlit as st
