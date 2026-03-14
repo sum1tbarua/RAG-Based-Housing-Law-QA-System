@@ -499,3 +499,10 @@ This project demonstrates how **retrieval-augmented generation with evidence gro
 
 MS Computer Science  
 Western Michigan University
+
+# Supervisor
+
+**Guan Yue Hong**
+
+Associate Professor, Computer Science  
+Western Michigan University
