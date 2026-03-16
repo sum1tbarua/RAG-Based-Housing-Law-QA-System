@@ -128,10 +128,37 @@ def safe_max(values: List[Optional[int]]) -> Optional[int]:
     return max(vals) if vals else None
 
 
+def would_exceed_page_span(
+    current_printed_pages: List[Optional[int]],
+    new_printed_page: Optional[int],
+    max_page_span: int,
+) -> bool:
+    """
+    Returns True if adding new_printed_page would make the chunk span
+    more than max_page_span printed pages.
+
+    Example:
+    current pages = [6, 6, 7], new page = 9, max_page_span = 2
+    span would be 9 - 6 = 3 -> too wide
+    """
+    if max_page_span <= 0:
+        return False
+
+    candidate_pages = [p for p in current_printed_pages if p is not None]
+    if new_printed_page is not None:
+        candidate_pages.append(new_printed_page)
+
+    if not candidate_pages:
+        return False
+
+    return (max(candidate_pages) - min(candidate_pages)) >= max_page_span
+
+
 def chunk_pages(
     pages: List[Dict[str, Any]],
-    chunk_tokens: int = 280,
-    overlap_tokens: int = 100
+    chunk_tokens: int = 600,
+    overlap_tokens: int = 120,
+    max_page_span: int = 2,
 ) -> List[Dict[str, Any]]:
     """
     Improved paragraph-aware chunking.
@@ -142,6 +169,7 @@ def chunk_pages(
     - preserve both PDF page range and printed page range
     - add overlap at paragraph level
     - filter low-value chunks
+    - prevent chunks from spanning too many printed pages
     """
     chunks: List[Dict[str, Any]] = []
     chunk_idx = 0
@@ -245,7 +273,19 @@ def chunk_pages(
                     if temp and temp_tokens + stoks > chunk_tokens:
                         split_para = " ".join(temp)
 
-                        if current_paras and token_len("\n\n".join(current_paras)) + token_len(split_para) > chunk_tokens:
+                        current_text = "\n\n".join(current_paras)
+                        current_tokens = token_len(current_text) if current_text else 0
+
+                        page_span_too_wide = would_exceed_page_span(
+                            current_printed_pages=current_printed_pages,
+                            new_printed_page=printed_page,
+                            max_page_span=max_page_span,
+                        )
+
+                        if current_paras and (
+                            current_tokens + token_len(split_para) > chunk_tokens
+                            or page_span_too_wide
+                        ):
                             flush()
 
                         current_paras.append(split_para)
@@ -260,7 +300,20 @@ def chunk_pages(
 
                 if temp:
                     split_para = " ".join(temp)
-                    if current_paras and token_len("\n\n".join(current_paras)) + token_len(split_para) > chunk_tokens:
+
+                    current_text = "\n\n".join(current_paras)
+                    current_tokens = token_len(current_text) if current_text else 0
+
+                    page_span_too_wide = would_exceed_page_span(
+                        current_printed_pages=current_printed_pages,
+                        new_printed_page=printed_page,
+                        max_page_span=max_page_span,
+                    )
+
+                    if current_paras and (
+                        current_tokens + token_len(split_para) > chunk_tokens
+                        or page_span_too_wide
+                    ):
                         flush()
 
                     current_paras.append(split_para)
@@ -272,7 +325,16 @@ def chunk_pages(
             current_text = "\n\n".join(current_paras)
             current_tokens = token_len(current_text) if current_text else 0
 
-            if current_paras and current_tokens + para_tokens > chunk_tokens:
+            page_span_too_wide = would_exceed_page_span(
+                current_printed_pages=current_printed_pages,
+                new_printed_page=printed_page,
+                max_page_span=max_page_span,
+            )
+
+            if current_paras and (
+                current_tokens + para_tokens > chunk_tokens
+                or page_span_too_wide
+            ):
                 flush()
 
             current_paras.append(para)

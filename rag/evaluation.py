@@ -58,13 +58,11 @@ def parse_evaluation_input(raw_text: str) -> List[Dict[str, Any]]:
         question = parts[0]
         should_refuse = parse_bool(parts[1]) if parts[1] else False
         gold_pages = parse_pages(parts[2])
-        gold_keywords = parse_keywords(parts[3])
 
         rows.append({
             "question": question,
             "should_refuse": should_refuse,
             "gold_pages": gold_pages,
-            "gold_keywords": gold_keywords,
         })
     return rows
 

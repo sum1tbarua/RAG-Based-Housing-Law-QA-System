@@ -223,7 +223,7 @@ with tab_dev:
             "Chunk size (tokens)",
             150,
             800,
-            280,
+            600,
             help="Controls how large each document piece is. Larger chunks contain more context but may reduce retrieval precision."
         )
         st.caption(
@@ -235,7 +235,7 @@ with tab_dev:
             "Chunk overlap (tokens)",
             0,
             200,
-            100,
+            120,
             help="Controls how much neighboring chunks overlap. Overlap helps prevent important information from being split between chunks."
         )
         st.caption(
@@ -251,7 +251,7 @@ with tab_dev:
             "Top-k retrieval",
             1,
             12,
-            10,
+            12,
             help="Number of candidate passages retrieved from the document before filtering and reranking."
         )
         st.caption(
@@ -269,7 +269,7 @@ with tab_dev:
             "Semantic weight",
             0.0,
             1.0,
-            0.50,
+            0.70,
             0.05,
             help="Weight for dense semantic retrieval in hybrid mode."
         )
@@ -292,7 +292,7 @@ with tab_dev:
             "Chunks passed to LLM",
             1,
             4,
-            3,
+            1,
             help="Number of top passages provided to the language model when generating the final answer."
         )
         st.caption(
@@ -337,7 +337,8 @@ with tab_ask:
                 chunks = chunk_pages(
                     pages,
                     chunk_tokens=chunk_tokens,
-                    overlap_tokens=overlap_tokens
+                    overlap_tokens=overlap_tokens,
+                    max_page_span=2,
                 )
 
             texts = [c["text"] for c in chunks]
@@ -623,17 +624,17 @@ with tab_eval:
     st.subheader("Evaluation")
     st.caption(
         "Run rigorous evaluation using structured lines in the format:\n"
-        "question | should_refuse | gold_pages | gold_keywords"
+        "question | should_refuse | gold_pages"
     )
 
     eval_questions = st.text_area(
         "Evaluation Input",
         height=220,
         placeholder=(
-            "What types of tenancy can exist under a lease agreement? | false | 3,4 | fixed term tenancy, periodic tenancy\n"
-            "How does a fixed-term tenancy normally end? | false | 3 | lease expiration, fixed term\n"
-            "What is a periodic tenancy or tenancy at will? | false | 6 | periodic tenancy, month to month\n"
-            "What notice is required to terminate a periodic tenancy? | false | 6 | notice, periodic tenancy\n"
+            "What types of tenancy can exist under a lease agreement? | false | 3,4\n"
+            "How does a fixed-term tenancy normally end? | false | 3\n"
+            "What is a periodic tenancy or tenancy at will? | false | 6\n"
+            "What notice is required to terminate a periodic tenancy? | false | 6\n"
         )
     )
 
