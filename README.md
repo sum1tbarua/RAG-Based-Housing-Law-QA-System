@@ -1,11 +1,11 @@
 # Trustworthy RAG System for Housing Law Question Answering
 ### Local LLM + Evidence Grounding + Hallucination Control
 
-![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
-![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-red)
-![Ollama](https://img.shields.io/badge/LLM-Ollama-black)
-![Mistral](https://img.shields.io/badge/Model-Mistral-green)
-![RAG](https://img.shields.io/badge/Architecture-RAG-purple)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)][Python-url]
+[![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-red)][Streamlit-url]
+[![Ollama](https://img.shields.io/badge/LLM-Ollama-black)][Ollama-url]
+[![Mistral](https://img.shields.io/badge/Model-Mistral-green)][Mistral-url]
+[![RAG](https://img.shields.io/badge/Architecture-RAG-purple)][RAG-url]
 ![Status](https://img.shields.io/badge/Status-Working%20Prototype-success)
 
 A **Retrieval-Augmented Generation (RAG)** system for **housing-law question answering** that answers user queries using a legal document while reducing hallucinations through:
@@ -506,3 +506,11 @@ Western Michigan University
 
 Associate Professor, Computer Science  
 Western Michigan University
+
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[Streamlit-url]: https://streamlit.io/
+[Python-url]: https://www.python.org/
+[Ollama-url]: https://ollama.com/
+[Mistral-url]: https://mistral.ai/
+[RAG-url]: https://aws.amazon.com/what-is/retrieval-augmented-generation/

@@ -1,86 +1,45 @@
+Test - 1
+--------
 Evaluation Questions:
-What responsibilities does a landlord have regarding repairs?
-How much notice must a landlord give before eviction?
-What can a tenant do if the landlord refuses to fix something?
-How long does a landlord have to return a security deposit?
-What rights does a tenant have regarding maintenance?
-What is the federal tax rate for rental income?
-What is the population of Michigan?
+According to the tenancy definitions section, what are the two primary types of tenancies under a lease agreement? | false | 3,4 | fixed term tenancy, periodic tenancy
+In the tenancy definitions section, what does a fixed-term tenancy mean? | false | 6 | fixed term, specified period, lease duration
+According to the lease termination section, how does a fixed-term tenancy normally end? | false | 6 | automatically ends, expiration of lease, fixed term
+According to the lease termination section, what type of tenancy may arise if a tenant stays after a fixed-term lease expires without signing a new lease? | false | 6 | periodic tenancy, month to month
+In the tenancy definitions section, what is a periodic tenancy or tenancy at will? | false | 4 | periodic tenancy, continuing tenancy, month to month
+According to the termination rules, what is required to terminate a periodic tenancy? | false | 6 | notice, termination notice, periodic tenancy
+Under the Truth in Renting Act section, what happens if a lease contains a prohibited provision? | false | 7 | prohibited provision, unenforceable, tenant rights
+According to the Truth in Renting Act rules, how long does a landlord have to correct a prohibited lease provision after receiving notice? | false | 7 | 20 days, correction period
+Under the Truth in Renting Act, what damages may a tenant recover if the landlord fails to correct a prohibited provision? | false | 7 | damages, tenant recovery
+According to the security deposit law, what is the maximum security deposit a landlord may collect? | false | 9 | one and one-half months rent, security deposit limit
+According to the security deposit procedures, how long does a landlord have to return the security deposit after the tenant moves out? | false | 11,12 | 30 days, security deposit return
+According to the security deposit rules, what types of charges may legally be deducted from the tenant’s deposit? | false | 9,12 | damages, unpaid rent, utilities
+According to the move-out procedures, what must a tenant do within four days after moving out regarding their forwarding address? | false | 10 | forwarding address, four days
+Under the damage notice procedure, what must a tenant do if they dispute damages listed by the landlord? | false | 11 | dispute damages, written response
+According to the security deposit dispute rules, what happens if a tenant fails to respond to the landlord’s damage notice within seven days? | false | 11 | forfeiture, tenant loses right to dispute
+According to the maintenance responsibilities section, what duties does a landlord have regarding repair and maintenance of the rental property? | false | 28,29 | repair, maintenance, landlord responsibilities
+According to the tenant remedies section, what options may tenants have if a landlord fails to make necessary repairs? | false | 29,30 | repair rights, escrow, tenant remedies
+Under federal law referenced in the booklet, what disclosure must landlords provide about lead-based paint hazards? | false | 32,33 | lead paint disclosure, federal requirement
+According to the move-in documentation section, what document must tenants complete describing the condition of the rental unit at move-in? | false | 41,42 | inventory checklist, condition report
+What is the federal income tax rate on rental income in Michigan? | true | |
+What is the population of Michigan according to the latest census? | true | |
 
 Testing parameters:
-1. Top-k: 3
-2. min_score: 0.50
+-------------------
+1. Top-k: 6
+2. min_score: 0.40
 
 
-Evaluation Answers:
-[
-    0:{
-        "question":"What responsibilities does a landlord have regarding repairs?"
-        "refused":false
-        "top_score":0.7503594160079956
-        "top_pages":[
-        0:36
-        1:36
-        ]
-    }
 
-    1:{
-        "question":"How much notice must a landlord give before eviction?"
-        "refused":false
-        "top_score":0.6267060041427612
-        "top_pages":[
-        0:58
-        1:58
-        ]
-    }
 
-    2:{
-        "question":"What can a tenant do if the landlord refuses to fix something?"
-        "refused":false
-        "top_score":0.6590511798858643
-        "top_pages":[
-        0:36
-        1:36
-        ]
-    }
+--------------------------------------
+--------------------------------------
 
-    3:{
-        "question":"How long does a landlord have to return a security deposit?"
-        "refused":false
-        "top_score":0.7061556577682495
-        "top_pages":[
-        0:11
-        1:11
-        ]
-    }
+Test - 2
+--------
+Evaluation Questions:
+Who will pay for each class of employee or board member?
+Tell me about fire protection
+What is open burning?
+Who will perform repairs to existing sidewalks and pathways?
+Is there any consequences for any provision violation?
 
-    4:{
-        "question":"What rights does a tenant have regarding maintenance?"
-        "refused":false
-        "top_score":0.6940436363220215
-        "top_pages":[
-        0:28
-        1:29
-        ]
-    }
-
-    5:{
-        "question":"What is the federal tax rate for rental income?"
-        "refused":true
-        "top_score":0.4490292966365814
-        "top_pages":[
-        0:60
-        1:60
-        ]
-    }
-
-    6:{
-        "question":"What is the population of Michigan?"
-        "refused":true
-        "top_score":0.28821900486946106
-        "top_pages":[
-        0:5
-        1:5
-        ]
-    }
-]
