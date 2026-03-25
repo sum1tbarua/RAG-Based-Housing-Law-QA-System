@@ -156,6 +156,8 @@ st.markdown("""
 # =========================================================
 if "store" not in st.session_state:
     st.session_state.store = None
+if "embedding_model_name" not in st.session_state:
+    st.session_state.embedding_model_name = "all-MiniLM-L6-v2"
 if "doc_loaded" not in st.session_state:
     st.session_state.doc_loaded = False
 if "chunks_count" not in st.session_state:
@@ -223,7 +225,7 @@ with tab_dev:
             "Chunk size (tokens)",
             150,
             800,
-            600,
+            600, # Default
             help="Controls how large each document piece is. Larger chunks contain more context but may reduce retrieval precision."
         )
         st.caption(
@@ -235,7 +237,7 @@ with tab_dev:
             "Chunk overlap (tokens)",
             0,
             200,
-            120,
+            120, # Default
             help="Controls how much neighboring chunks overlap. Overlap helps prevent important information from being split between chunks."
         )
         st.caption(
@@ -251,12 +253,33 @@ with tab_dev:
             "Top-k retrieval",
             1,
             12,
-            12,
+            12, # Default
             help="Number of candidate passages retrieved from the document before filtering and reranking."
         )
         st.caption(
             "Higher values retrieve more possible passages but may introduce noise."
         )
+        
+        # Embedding model selector
+        embedding_model_name = st.selectbox(
+        "Embedding model",
+        options=[
+            "all-MiniLM-L6-v2",
+            "intfloat/e5-base-v2",
+            "BAAI/bge-base-en-v1.5",
+        ],
+        index=[
+            "all-MiniLM-L6-v2",
+            "intfloat/e5-base-v2",
+            "BAAI/bge-base-en-v1.5",
+        ].index(st.session_state.embedding_model_name),
+        help="Select the embedding model used for both document chunk indexing and query retrieval."
+        )
+        if embedding_model_name != st.session_state.embedding_model_name:
+            st.session_state.embedding_model_name = embedding_model_name
+            st.session_state.store = None
+            st.session_state.doc_loaded = False
+            st.info("Embedding model changed. Please re-ingest the document to rebuild the index.")
 
         retrieval_mode = st.selectbox(
             "Retriever mode",
@@ -275,6 +298,18 @@ with tab_dev:
         )
         lexical_weight = 1.0 - semantic_weight
         st.caption(f"Lexical weight will be: {lexical_weight:.2f}")
+        
+        use_reranker = st.checkbox(
+            "Use reranker",
+            value = True,
+            help="Enable heuristic reranking of retrieved chunks"
+        )
+        
+        use_validation = st.checkbox(
+            "Use grounding validation",
+            value=True,
+            help="Enable post-generation citation, overlap, semantic grounding, and hallucination validation"
+        )
 
         min_score = st.slider(
             "Evidence threshold",
@@ -316,6 +351,22 @@ with tab_dev:
 # 6. ASK QUESTIONS TAB
 # =========================================================
 with tab_ask:
+    if not use_validation:
+         st.markdown(
+        """
+        <div style="
+            background-color: #fff4e5;
+            border-left: 6px solid #f59e0b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            color: #7c2d12;
+            font-weight: 600;">
+            ⚠️ Grounding validation is OFF. This mode bypasses post-generation trustworthiness checks and should be used only for debugging or ablation experiments.
+        </div>
+        """,
+        unsafe_allow_html=True)
+    
     col_left, col_right = st.columns([1, 1.6], gap="large")
 
     with col_left:
@@ -353,7 +404,7 @@ with tab_ask:
             } for c in chunks]
 
             with st.spinner("Building hybrid retrieval index..."):
-                store = SemanticVectorStore(model_name="all-MiniLM-L6-v2")
+                store = SemanticVectorStore(model_name=st.session_state.embedding_model_name)
                 store.add(texts, metas)
 
             st.session_state.store = store
@@ -375,7 +426,8 @@ with tab_ask:
                 f"""
                 <div class="small-muted" style="margin-top:0.75rem;">
                     <strong>Status:</strong> Document indexed<br>
-                    <strong>Chunks:</strong> {st.session_state.chunks_count}
+                    <strong>Chunks:</strong> {st.session_state.chunks_count}<br>
+                    <strong>Embedding Model:</strong> {st.session_state.embedding_model_name}<br>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -420,13 +472,19 @@ with tab_ask:
                         retrieved_raw,
                         similarity_threshold=0.80
                     )
-                    retrieved_reranked = rerank_chunks(question, retrieved_dedup)
+                    
+                    if use_reranker:
+                        retrieved_reranked = rerank_chunks(question, retrieved_dedup)
+                    else:
+                        retrieved_reranked = retrieved_dedup
                     retrieved = retrieved_reranked[:max_context_chunks]
 
                     if show_debug:
+                        st.write(f"Reranker enabled: {use_reranker}")
                         st.write(f"Retrieved before deduplication: {len(retrieved_raw)}")
                         st.write(f"Retrieved after deduplication: {len(retrieved_dedup)}")
-                        st.write(f"Retrieved after reranking: {len(retrieved_reranked)}")
+                        if use_reranker:
+                            st.write(f"Retrieved after reranking: {len(retrieved_reranked)}")
                         st.write(f"Chunks passed to LLM: {len(retrieved)}")
 
                     retrieval_validation = validate_retrieval_stage(
@@ -491,50 +549,69 @@ with tab_ask:
                             st.session_state.last_evidence = retrieved
                             st.session_state.last_citations = []
                         else:
-                            answer_validation = validate_answer_with_semantic_grounding(
-                                answer_text=output,
-                                retrieved=retrieved,
-                                max_sources=len(retrieved),
-                                min_overlap_ratio=0.10,
-                                min_semantic_similarity=0.40,
-                                min_overlap_support_ratio=0.50,
-                                min_semantic_support_ratio=0.50,
-                            )
-
-                            if not answer_validation["valid"]:
-                                st.error("Unsafe output detected. Returning refusal.")
-                                if show_debug:
-                                    st.caption(answer_validation["reason"])
-                                    if answer_validation["invalid_sentences"]:
-                                        st.write("Invalid / uncited sentences:")
-                                        for item in answer_validation["invalid_sentences"]:
-                                            st.write(f"- {item['sentence']}")
-
-                                st.session_state.last_answer = (
-                                    "I cannot provide a sufficiently grounded answer from the uploaded document."
+                            if use_validation:
+                                answer_validation = validate_answer_with_semantic_grounding(
+                                    answer_text=output,
+                                    retrieved=retrieved,
+                                    max_sources=len(retrieved),
+                                    min_overlap_ratio=0.10,
+                                    min_semantic_similarity=0.40,
+                                    min_overlap_support_ratio=0.50,
+                                    min_semantic_support_ratio=0.50,
                                 )
-                                st.session_state.last_evidence = retrieved
-                                st.session_state.last_citations = []
+
+                                if not answer_validation["valid"]:
+                                    st.error("Unsafe output detected. Returning refusal.")
+                                    if show_debug:
+                                        st.caption(answer_validation["reason"])
+                                        if answer_validation["invalid_sentences"]:
+                                            st.write("Invalid / uncited sentences:")
+                                            for item in answer_validation["invalid_sentences"]:
+                                                st.write(f"- {item['sentence']}")
+
+                                    st.session_state.last_answer = (
+                                        "I cannot provide a sufficiently grounded answer from the uploaded document."
+                                    )
+                                    st.session_state.last_evidence = retrieved
+                                    st.session_state.last_citations = []
+                                else:
+                                    cited_ids = answer_validation["all_source_ids"]
+
+                                    mapped_citations = []
+                                    for sid in cited_ids:
+                                        if 1 <= sid <= len(retrieved):
+                                            r = retrieved[sid - 1]
+                                            meta = r["metadata"]
+                                            mapped_citations.append({
+                                                "source_id": f"Source {sid}",
+                                                "printed_page_start": meta.get("printed_page_start") or meta.get("pdf_page_start"),
+                                                "printed_page_end": meta.get("printed_page_end") or meta.get("pdf_page_end"),
+                                                "pdf_page_start": meta.get("pdf_page_start"),
+                                                "pdf_page_end": meta.get("pdf_page_end"),
+                                                "score": round(r["score"], 4)
+                                            })
+
+                                    st.session_state.last_answer = output
+                                    st.session_state.last_evidence = retrieved
+                                    st.session_state.last_citations = mapped_citations
                             else:
-                                cited_ids = answer_validation["all_source_ids"]
-
-                                mapped_citations = []
-                                for sid in cited_ids:
-                                    if 1 <= sid <= len(retrieved):
-                                        r = retrieved[sid - 1]
-                                        meta = r["metadata"]
-                                        mapped_citations.append({
-                                            "source_id": f"Source {sid}",
-                                            "printed_page_start": meta.get("printed_page_start") or meta.get("pdf_page_start"),
-                                            "printed_page_end": meta.get("printed_page_end") or meta.get("pdf_page_end"),
-                                            "pdf_page_start": meta.get("pdf_page_start"),
-                                            "pdf_page_end": meta.get("pdf_page_end"),
-                                            "score": round(r["score"], 4)
-                                        })
-
+                                # Validation OFF: accept generated answer directly after citation repair
                                 st.session_state.last_answer = output
                                 st.session_state.last_evidence = retrieved
-                                st.session_state.last_citations = mapped_citations
+
+                                fallback_citations = []
+                                for sid, r in enumerate(retrieved, start=1):
+                                    meta = r["metadata"]
+                                    fallback_citations.append({
+                                        "source_id": f"Source {sid}",
+                                        "printed_page_start": meta.get("printed_page_start") or meta.get("pdf_page_start"),
+                                        "printed_page_end": meta.get("printed_page_end") or meta.get("pdf_page_end"),
+                                        "pdf_page_start": meta.get("pdf_page_start"),
+                                        "pdf_page_end": meta.get("pdf_page_end"),
+                                        "score": round(r["score"], 4)
+                                    })
+
+                                st.session_state.last_citations = fallback_citations
 
         if st.session_state.last_answer:
             st.markdown("### Answer")
@@ -621,6 +698,23 @@ with tab_ask:
 # 7. EVALUATION TAB
 # =========================================================
 with tab_eval:
+    if not use_validation:
+         st.markdown(
+        """
+        <div style="
+            background-color: #fff4e5;
+            border-left: 6px solid #f59e0b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            color: #7c2d12;
+            font-weight: 600;">
+            ⚠️ Grounding validation is currently OFF. Validation-specific metrics such as hallucination rate, support ratio, overlap validity, and semantic validity are not meaningful in this mode.
+
+        </div>
+        """,
+        unsafe_allow_html=True)
+    
     st.subheader("Evaluation")
     st.caption(
         "Run rigorous evaluation using structured lines in the format:\n"
@@ -633,8 +727,6 @@ with tab_eval:
         placeholder=(
             "What types of tenancy can exist under a lease agreement? | false | 3,4\n"
             "How does a fixed-term tenancy normally end? | false | 3\n"
-            "What is a periodic tenancy or tenancy at will? | false | 6\n"
-            "What notice is required to terminate a periodic tenancy? | false | 6\n"
         )
     )
 
@@ -655,6 +747,8 @@ with tab_eval:
                     retrieval_mode=retrieval_mode,
                     semantic_weight=semantic_weight,
                     lexical_weight=lexical_weight,
+                    use_reranker=use_reranker,
+                    use_validation=use_validation
                 )
 
             st.markdown("### Summary Metrics")
@@ -677,11 +771,10 @@ with tab_eval:
             c11.metric("Avg Overlap Ratio", f"{summary['average_overlap_ratio']*100:.1f}%")
             c12.metric("Avg Semantic Similarity", f"{summary['average_semantic_similarity']*100:.1f}%")
 
-            c13, c14, c15, c16 = st.columns(4)
-            c13.metric("Avg Keyword Coverage", f"{summary['average_keyword_coverage']*100:.1f}%")
-            c14.metric("Retrieval Exact Hit", f"{summary['retrieval_exact_hit_rate']*100:.1f}%")
-            c15.metric("Retrieval Near Hit", f"{summary['retrieval_near_hit_rate']*100:.1f}%")
-            c16.metric("Avg Min Page Distance", f"{summary['average_min_page_distance']:.2f}")
+            c13, c14, c15 = st.columns(3)
+            c13.metric("Retrieval Exact Hit", f"{summary['retrieval_exact_hit_rate']*100:.1f}%")
+            c14.metric("Retrieval Near Hit", f"{summary['retrieval_near_hit_rate']*100:.1f}%")
+            c15.metric("Avg Min Page Distance", f"{summary['average_min_page_distance']:.2f}")
 
             st.markdown("### Detailed Results")
             
@@ -696,7 +789,6 @@ with tab_eval:
                 "citation_valid",
                 "semantic_valid",
                 "hallucination_risk",
-                "keyword_coverage",
                 "answer_preview"
             ]
 
