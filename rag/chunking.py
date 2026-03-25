@@ -1,6 +1,9 @@
 """
 rag/chunking.py
-Purpose: create chunk objects with citation metadata
+Purpose: 
+    Convert parsed legal document pages into coherent, evidence-bearing
+    text chunks while preserving page metadata and avoiding noisy or
+    overly broad chunks. 
 """
 
 from typing import List, Dict, Any, Optional
@@ -11,10 +14,22 @@ ENC = tiktoken.get_encoding("cl100k_base")
 
 
 def token_len(text: str) -> int:
+    """
+    Purpose:
+        Calculates the number of tokens in piece of text using tiktoken with c1100k_base encoding.
+    """
     return len(ENC.encode(text))
 
 
 def normalize_text(text: str) -> str:
+    """
+    Purposes:
+        Standarizes extracted PDF text by:
+        - replacing non-breaking spaces
+        - collapsing extra spaces
+        - limiting repeated newlines
+        - stripping surrounding whitespace
+    """
     if not text:
         return ""
 
@@ -26,19 +41,22 @@ def normalize_text(text: str) -> str:
 
 def split_into_paragraphs(text: str) -> List[str]:
     """
-    Paragraph-aware splitting.
+    Paragraph-aware segmentation function.
 
     Strategy:
-    1. Try double-newline split
+    1. Try double-newline style paragraph breaks
     2. If PDF extraction collapsed everything into one block,
-       fall back to sentence-ish boundaries after punctuation.
+       it assumes paragraph structure was lost and falls back
+       to splitting after punctuation followed by a capital letter.
     """
     text = normalize_text(text)
     if not text:
         return []
 
+    # Paragraph-aware splitting
     paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
+    # Fallback: sentence-aware splitting
     if len(paras) <= 1:
         pieces = re.split(r'(?<=[\.\?\!])\s+(?=[A-Z])', text)
         pieces = [p.strip() for p in pieces if p.strip()]
@@ -62,7 +80,7 @@ def split_into_paragraphs(text: str) -> List[str]:
 def looks_like_toc_or_navigation(text: str) -> bool:
     """
     Heuristic filter for low-value legal document chunks:
-    - table of contents
+    - table of contents or toc
     - page listings
     - many repeated headings
     - mostly navigation-like structure
@@ -99,6 +117,11 @@ def looks_like_toc_or_navigation(text: str) -> bool:
 def is_low_information(text: str) -> bool:
     """
     Filter chunks that are too short or not useful as evidence.
+    This flags text as low-information if:
+    - it is empty
+    - it is too short in characters
+    - it is too short in tokens
+    - it contains almost no alphabetic content
     """
     if not text:
         return True
@@ -117,12 +140,14 @@ def is_low_information(text: str) -> bool:
 
     return False
 
-
+"""
+safe_min() and safe_max() compute min/max while ignoring None values.
+These helper functions compute page range metadata even when some printed-page
+values are unavailable.
+"""
 def safe_min(values: List[Optional[int]]) -> Optional[int]:
     vals = [v for v in values if v is not None]
     return min(vals) if vals else None
-
-
 def safe_max(values: List[Optional[int]]) -> Optional[int]:
     vals = [v for v in values if v is not None]
     return max(vals) if vals else None
@@ -161,7 +186,11 @@ def chunk_pages(
     max_page_span: int = 2,
 ) -> List[Dict[str, Any]]:
     """
-    Improved paragraph-aware chunking.
+    Arguments:
+        pages - parsed page objects
+        chunk_tokens - max target chunk size
+        overlap_tokens - overlap budget between chunks
+        max_page_span - maximum allowed printed-page span
 
     Workflow:
     - split each page into paragraph-like units

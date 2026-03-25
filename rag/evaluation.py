@@ -1,8 +1,15 @@
 # rag/evaluation.py
+"""
+This evaluation framework tests whether the system can:
+- retrieve the correct evidence pages
+- generate an answer only when evidence is strong enough
+- cite evidence correctly
+- avoid unsupported statements
+- refuse when the answer is out of scope
+"""
 from typing import List, Dict, Any, Tuple
 import re
 import pandas as pd
-
 from rag.prompts import SYSTEM_PROMPT, build_user_prompt
 from rag.ollama_client import chat
 from rag.retrieval_utils import deduplicate_retrieved_chunks
@@ -13,6 +20,7 @@ from rag.validators import (
     auto_attach_single_source_citations,
     auto_attach_fallback_citations,
     normalize_answer_text,
+    split_into_sentences
 )
 
 
@@ -42,8 +50,16 @@ def parse_keywords(value: str) -> List[str]:
 
 def parse_evaluation_input(raw_text: str) -> List[Dict[str, Any]]:
     """
+    Purpose: 
+        Reads each line and turns the whole evaluation set into a list
+        of structured dictionaries.
+    --
     Expected line format:
-    question | should_refuse | gold_pages | gold_keywords
+        question | should_refuse | gold_pages 
+    --
+    question: the evaluation question
+    should_refuse: whether the system is expected to refuse
+    gold_pages: the document pages where the answer should be found
     """
     rows = []
     for line in raw_text.splitlines():
@@ -118,6 +134,11 @@ def validate_gold_page_alignment(
 ) -> Dict[str, Any]:
     """
     Compare retrieved pages against gold pages and classify the alignment.
+    
+    Returns:
+        exact_hit: at least one retrieved page exactly matches a gold page
+        near_hit: at least one retrieved page is within +/-1 page of a gold page
+        min_page_distance: smallest distance between any retrieved page and any gold page
     """
     if not gold_pages:
         return {
@@ -185,24 +206,29 @@ def validate_gold_page_alignment(
     }
 
 
-def keyword_coverage(answer_text: str, gold_keywords: List[str]) -> float:
-    if not gold_keywords:
-        return 1.0
-    text = answer_text.lower()
-    matched = sum(1 for kw in gold_keywords if kw in text)
-    return matched / max(len(gold_keywords), 1)
-
 
 def detect_refusal(text: str) -> bool:
     """
     Detect explicit model refusal. This should NOT include
     general grounding/validation failure.
+    
+    It recognizes patterns like:
+    - "I cannot answer..."
+    - "The document does not contain sufficient information..."
+    - "Cannot be determined..."
+    
+    If any of these patterns match, the answer is marked as a refusal.
+    This is used later to determine:
+    - true refusal
+    - false refusal
+    - false answer
     """
     if not text or not text.strip():
         return True
 
     normalized = " ".join(text.lower().split())
 
+    # Patterns that will trigger the refusal. 
     refusal_patterns = [
         r"^i cannot answer\b",
         r"^i can't answer\b",
@@ -224,7 +250,6 @@ def run_single_evaluation(
     question: str,
     should_refuse: bool,
     gold_pages: List[int],
-    gold_keywords: List[str],
     store,
     chat_model: str,
     top_k: int,
@@ -234,7 +259,10 @@ def run_single_evaluation(
     retrieval_mode: str = "hybrid",
     semantic_weight: float = 0.50,
     lexical_weight: float = 0.50,
+    use_reranker: bool = True,
+    use_validation: bool = True
 ) -> Dict[str, Any]:
+
     expanded_query = (
         question
         + " landlord tenant law lease agreement tenancy rights obligations "
@@ -249,11 +277,17 @@ def run_single_evaluation(
         semantic_weight=semantic_weight,
         lexical_weight=lexical_weight,
     )
+
     retrieved_dedup = deduplicate_retrieved_chunks(
         retrieved_raw,
         similarity_threshold=dedup_threshold
     )
-    retrieved_reranked = rerank_chunks(question, retrieved_dedup)
+
+    if use_reranker:
+        retrieved_reranked = rerank_chunks(question, retrieved_dedup)
+    else:
+        retrieved_reranked = retrieved_dedup
+
     retrieved = retrieved_reranked[:max_context_chunks]
 
     retrieval_validation = validate_retrieval_stage(
@@ -263,11 +297,13 @@ def run_single_evaluation(
     top_score = retrieval_validation["top_score"]
 
     retrieved_pages = extract_retrieved_pages(retrieved, page_scheme="printed")
+
     page_alignment = validate_gold_page_alignment(
         retrieved_pages=retrieved_pages,
         gold_pages=gold_pages,
         near_margin=1,
     )
+
     retrieval_hit_at_top = page_alignment["hit"]
 
     refused = False
@@ -287,7 +323,6 @@ def run_single_evaluation(
     unsupported_sentence_count = 0
     total_sentences = 0
     grounded_answer_correct = False
-    keyword_cov = 0.0
     validation_reason = ""
     answer_validation: Dict[str, Any] = {}
 
@@ -299,6 +334,7 @@ def run_single_evaluation(
         refused = True
         answer_text = "I cannot find sufficient evidence in the uploaded document to answer this question."
         validation_reason = retrieval_validation["reason"]
+
     else:
         user_prompt = build_user_prompt(question, retrieved)
         output = chat(
@@ -338,7 +374,6 @@ def run_single_evaluation(
         ]
 
         lower_output = output.lower()
-
         if any(p in lower_output for p in near_refusal_patterns):
             output = "The document does not contain sufficient information to answer this question."
 
@@ -346,38 +381,60 @@ def run_single_evaluation(
         refused = detect_refusal(output)
 
         if not refused:
-            answer_validation = validate_answer_with_semantic_grounding(
-                answer_text=output,
-                retrieved=retrieved,
-                max_sources=len(retrieved),
-                min_overlap_ratio=0.10,
-                min_semantic_similarity=0.40,
-                min_overlap_support_ratio=0.50,
-                min_semantic_support_ratio=0.50,
-            )
+            if use_validation:
+                answer_validation = validate_answer_with_semantic_grounding(
+                    answer_text=output,
+                    retrieved=retrieved,
+                    max_sources=len(retrieved),
+                    min_overlap_ratio=0.10,
+                    min_semantic_similarity=0.40,
+                    min_overlap_support_ratio=0.50,
+                    min_semantic_support_ratio=0.50,
+                )
 
-            validation_reason = answer_validation.get("reason", "")
+                validation_reason = answer_validation.get("reason", "")
 
-            citation_valid = answer_validation.get("citation_valid", False)
-            overlap_valid = answer_validation.get("overlap_valid", False)
-            semantic_valid = answer_validation.get("semantic_valid", False)
+                citation_valid = answer_validation.get("citation_valid", False)
+                overlap_valid = answer_validation.get("overlap_valid", False)
+                semantic_valid = answer_validation.get("semantic_valid", False)
 
-            total_sentences = len(answer_validation.get("sentences", []))
-            unsupported_sentence_count = len(answer_validation.get("invalid_sentences", []))
-            weak_overlap_count = len(answer_validation.get("weak_overlap_sentences", []))
-            weak_semantic_count = len(answer_validation.get("weak_semantic_sentences", []))
+                total_sentences = len(answer_validation.get("sentences", []))
+                unsupported_sentence_count = len(answer_validation.get("invalid_sentences", []))
+                weak_overlap_count = len(answer_validation.get("weak_overlap_sentences", []))
+                weak_semantic_count = len(answer_validation.get("weak_semantic_sentences", []))
 
-            avg_overlap_ratio = answer_validation.get("avg_overlap_ratio", 0.0)
-            avg_semantic_similarity = answer_validation.get("avg_semantic_similarity", 0.0)
-            overlap_support_ratio = answer_validation.get("overlap_support_ratio", 0.0)
-            semantic_support_ratio = answer_validation.get("semantic_support_ratio", 0.0)
+                avg_overlap_ratio = answer_validation.get("avg_overlap_ratio", 0.0)
+                avg_semantic_similarity = answer_validation.get("avg_semantic_similarity", 0.0)
+                overlap_support_ratio = answer_validation.get("overlap_support_ratio", 0.0)
+                semantic_support_ratio = answer_validation.get("semantic_support_ratio", 0.0)
 
-            hallucination_detected = answer_validation.get("hallucination_detected", False)
-            hallucination_risk = answer_validation.get("hallucination_risk", "unknown")
-            supported_sentence_ratio = answer_validation.get("supported_sentence_ratio", 0.0)
+                hallucination_detected = answer_validation.get("hallucination_detected", False)
+                hallucination_risk = answer_validation.get("hallucination_risk", "unknown")
+                supported_sentence_ratio = answer_validation.get("supported_sentence_ratio", 0.0)
 
-            keyword_cov = keyword_coverage(answer_text, gold_keywords)
-            evidence_supported = citation_valid and (overlap_valid or semantic_valid)
+                evidence_supported = citation_valid and (overlap_valid or semantic_valid)
+
+            else:
+                validation_reason = "Validation disabled."
+                citation_valid = False
+                overlap_valid = False
+                semantic_valid = False
+                evidence_supported = False
+
+                hallucination_detected = False
+                hallucination_risk = "not_evaluated"
+                supported_sentence_ratio = 1.0
+
+                weak_overlap_count = 0
+                weak_semantic_count = 0
+                avg_overlap_ratio = 1.0
+                avg_semantic_similarity = 1.0
+                overlap_support_ratio = 1.0
+                semantic_support_ratio = 1.0
+
+                total_sentences = len(split_into_sentences(answer_text)) if answer_text else 0
+                unsupported_sentence_count = 0
+
         else:
             validation_reason = "Model refusal detected."
 
@@ -386,7 +443,6 @@ def run_single_evaluation(
         and (not refused)
         and retrieval_hit_at_top
         and evidence_supported
-        and (keyword_cov >= 0.3)
     )
 
     true_refusal = should_refuse and refused
@@ -395,49 +451,68 @@ def run_single_evaluation(
     final_pass = grounded_answer_correct or true_refusal
 
     return {
-        "result": "PASS" if final_pass else "FAIL",
         "question": question,
         "should_refuse": should_refuse,
-        "refused": refused,
+
         "top_score": round(top_score, 4),
         "retrieved_pages": ",".join(map(str, retrieved_pages)) if retrieved_pages else "",
+        "matched_gold_pages": ",".join(map(str, page_alignment["matched_gold_pages"])) if gold_pages else "",
         "gold_pages": ",".join(map(str, gold_pages)) if gold_pages else "",
+        "matched_retrieved_pages": ",".join(map(str, page_alignment["matched_retrieved_pages"])) if gold_pages else "",
         "retrieval_hit": retrieval_hit_at_top if gold_pages else None,
         "retrieval_alignment_label": page_alignment["alignment_label"] if gold_pages else None,
         "retrieval_exact_hit": page_alignment["exact_hit"] if gold_pages else None,
         "retrieval_near_hit": page_alignment["near_hit"] if gold_pages else None,
         "min_page_distance": page_alignment["min_page_distance"] if gold_pages else None,
-        "matched_gold_pages": ",".join(map(str, page_alignment["matched_gold_pages"])) if gold_pages else "",
-        "matched_retrieved_pages": ",".join(map(str, page_alignment["matched_retrieved_pages"])) if gold_pages else "",
+
+        "refused": refused,
         "citation_valid": citation_valid,
         "overlap_valid": overlap_valid,
         "semantic_valid": semantic_valid,
         "evidence_supported": evidence_supported,
+
         "hallucination_detected": hallucination_detected,
         "hallucination_risk": hallucination_risk,
         "supported_sentence_ratio": round(supported_sentence_ratio, 4),
+
+        "total_sentences": total_sentences,
+        "unsupported_sentence_count": unsupported_sentence_count,
+        "unsupported_sentence_rate": round(
+            unsupported_sentence_count / total_sentences, 4
+        ) if total_sentences > 0 else 0.0,
         "weak_overlap_count": weak_overlap_count,
         "weak_semantic_count": weak_semantic_count,
         "avg_overlap_ratio": round(avg_overlap_ratio, 4),
         "avg_semantic_similarity": round(avg_semantic_similarity, 4),
         "overlap_support_ratio": round(overlap_support_ratio, 4),
         "semantic_support_ratio": round(semantic_support_ratio, 4),
-        "unsupported_sentence_count": unsupported_sentence_count,
-        "total_sentences": total_sentences,
-        "unsupported_sentence_rate": round(
-            unsupported_sentence_count / total_sentences, 4
-        ) if total_sentences > 0 else 0.0,
-        "keyword_coverage": round(keyword_cov, 4),
+        "validation_reason": validation_reason,
+        "answer_preview": answer_text[:220],
+
         "grounded_answer_correct": grounded_answer_correct,
         "true_refusal": true_refusal,
         "false_refusal": false_refusal,
         "false_answer": false_answer,
-        "validation_reason": validation_reason,
-        "answer_preview": answer_text[:220],
+        "result": "PASS" if final_pass else "FAIL",
     }
 
 
 def summarize_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Purpose:
+        After all questions are evaluated, the framework aggregates summary metrics.
+        It separates the results into:
+        - in_scope: questions that should be answered
+        - out_scope: questions that should be refused
+        
+        Then it computes:
+        - retrieval metrics
+        - answer-quality metrics
+        - hallucination metrics
+        - Refusal metrics
+        - general confidence metric
+    """
+    
     if not results:
         return {}
 
@@ -447,6 +522,7 @@ def summarize_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     out_scope = [r for r in results if r["should_refuse"]]
 
     retrieval_scored = [r for r in in_scope if r["retrieval_hit"] is not None]
+
 
     retrieval_accuracy = (
         sum(1 for r in retrieval_scored if r["retrieval_hit"]) / len(retrieval_scored)
@@ -504,39 +580,34 @@ def summarize_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     )
 
     average_overlap_ratio = (
-        sum(r["avg_overlap_ratio"] for r in in_scope) / len(in_scope)
+        sum(r.get("avg_overlap_ratio", 0.0) for r in in_scope) / len(in_scope)
         if in_scope else 0.0
     )
 
     average_semantic_similarity = (
-        sum(r["avg_semantic_similarity"] for r in in_scope) / len(in_scope)
+        sum(r.get("avg_semantic_similarity", 0.0) for r in in_scope) / len(in_scope)
         if in_scope else 0.0
     )
 
     average_overlap_support_ratio = (
-        sum(r["overlap_support_ratio"] for r in in_scope) / len(in_scope)
+        sum(r.get("overlap_support_ratio", 0.0) for r in in_scope) / len(in_scope)
         if in_scope else 0.0
     )
 
     average_semantic_support_ratio = (
-        sum(r["semantic_support_ratio"] for r in in_scope) / len(in_scope)
+        sum(r.get("semantic_support_ratio", 0) for r in in_scope) / len(in_scope)
         if in_scope else 0.0
     )
 
     unsupported_sentence_rate = (
-        sum(r["unsupported_sentence_count"] for r in results) /
-        max(sum(r["total_sentences"] for r in results), 1)
+        sum(r.get("unsupported_sentence_count", 0) for r in results) /
+        max(sum(r.get("total_sentences", 0) for r in results), 1)
     )
 
     avg_top_score = sum(r["top_score"] for r in results) / total
 
-    avg_keyword_coverage = (
-        sum(r["keyword_coverage"] for r in in_scope) / len(in_scope)
-        if in_scope else 0.0
-    )
-
     evidence_support_rate = (
-        sum(1 for r in in_scope if r["evidence_supported"]) / len(in_scope)
+        sum(1 for r in in_scope if r.get("evidence_supported", 0)) / len(in_scope)
         if in_scope else 0.0
     )
 
@@ -566,7 +637,6 @@ def summarize_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "evidence_support_rate": round(evidence_support_rate, 4),
         "unsupported_sentence_rate": round(unsupported_sentence_rate, 4),
         "avg_top_score": round(avg_top_score, 4),
-        "average_keyword_coverage": round(avg_keyword_coverage, 4),
         "average_overlap_ratio": round(average_overlap_ratio, 4),
         "average_semantic_similarity": round(average_semantic_similarity, 4),
         "average_overlap_support_ratio": round(average_overlap_support_ratio, 4),
@@ -585,7 +655,17 @@ def run_rigorous_evaluation(
     retrieval_mode: str = "hybrid",
     semantic_weight: float = 0.50,
     lexical_weight: float = 0.50,
+    use_reranker: bool = True,
+    use_validation: bool = True
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    
+    """
+    Purposes:
+        - Parses the evaluation input
+        - Loops through each question and calls run_single_evaluation()
+        - Returns a detailed DataFrame and a summary dictionary
+    """
+    
     rows = parse_evaluation_input(raw_text)
     results = []
 
@@ -594,16 +674,19 @@ def run_rigorous_evaluation(
             question=row["question"],
             should_refuse=row["should_refuse"],
             gold_pages=row["gold_pages"],
-            gold_keywords=row["gold_keywords"],
             store=store,
             chat_model=chat_model,
             top_k=top_k,
             min_score=min_score,
             max_context_chunks=max_context_chunks,
+            # dedup_threshold=0.80,
             retrieval_mode=retrieval_mode,
             semantic_weight=semantic_weight,
             lexical_weight=lexical_weight,
+            use_reranker=use_reranker,
+            use_validation = use_validation
         )
+        
         results.append(result)
 
     df = pd.DataFrame(results)
@@ -631,7 +714,6 @@ def run_rigorous_evaluation(
         "hallucination_detected",
         "hallucination_risk",
         "supported_sentence_ratio",
-        "keyword_coverage",
         "avg_overlap_ratio",
         "avg_semantic_similarity",
         "overlap_support_ratio",

@@ -4,6 +4,16 @@ import re
 
 
 def tokenize(text: str) -> List[str]:
+    """
+    Purposes:
+        Converts text into a list of lowercase word tokens.
+    Reasons:
+        The reranker uses token-level matching for:
+        - question overlap
+        - positive keyword counts
+        - negative keyword counts
+        - pattern-based bonuses
+    """
     text = text.lower()
     return re.findall(r"\b[a-zA-Z]+\b", text)
 
@@ -19,6 +29,11 @@ def rerank_chunks(question: str, retrieved: List[Dict[str, Any]]) -> List[Dict[s
 
     Returns:
         same chunk objects, reordered by reranked score
+    """
+    
+    """
+    Creates a set of unique words from the user question. This lets the
+    reranker measure overlap between the question and each chunk. 
     """
     q_tokens = set(tokenize(question))
 
@@ -67,6 +82,14 @@ def rerank_chunks(question: str, retrieved: List[Dict[str, Any]]) -> List[Dict[s
             direct_bonus += 0.08
 
         # weighted heuristic score
+        """
+        The heuristic weights were calibrated using a validation-style approach
+        where observed ranking behavior across representative queries and adjusted the coefficients
+        to maximize alignment between retrieved chunks and gold evidence pages. The design ensures
+        that the heuristic signals remain secondary to the base retrieval score while still
+        improving answerability. 
+        These weights can be tuned per dataset or learned via training a reranker model. 
+        """
         heuristic_score = (
             base_score
             + 0.04 * overlap

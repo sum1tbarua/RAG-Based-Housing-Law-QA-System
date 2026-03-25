@@ -1,4 +1,12 @@
 # rag/retrieval_utils.py
+"""
+Purpose:
+Post-processes the retrieved chunks by removing near-duplicates. Since overlapping
+chunking can produce very similar passages, it normalizes the retrieved text, compare
+chunk similarity using SequenceMatcher, and keeps only the first high-ranked occurance
+when similarity exceeds a threshold. 
+"""
+
 from typing import List, Dict, Any
 import re
 from difflib import SequenceMatcher
@@ -6,7 +14,13 @@ from difflib import SequenceMatcher
 
 def normalize_for_compare(text: str) -> str:
     """
-    Normalize text for deduplication comparison.
+    Purposes:
+        Prepares a chunk of text so it can be compared consistently with another chunk
+        
+        Performs:
+        - converts text to lowercase
+        - collapses repeated whitespace into single spaces
+        - removes leading/trailing spaces
     """
     text = text.lower()
     text = re.sub(r"\s+", " ", text)
@@ -17,7 +31,9 @@ def normalize_for_compare(text: str) -> str:
 def text_similarity(a: str, b: str) -> float:
     """
     Returns similarity score between two texts in [0, 1].
-    Uses SequenceMatcher for a simple near-duplicate check.
+    0.0 -> completely different
+    1.0 -> identical
+    Uses Python's SequenceMatcher for a simple near-duplicate check.
     """
     return SequenceMatcher(None, a, b).ratio()
 
@@ -39,7 +55,10 @@ def deduplicate_retrieved_chunks(
     Returns:
         filtered retrieval list
     """
+    
+    # Holds the final filtered retrieval list
     deduped: List[Dict[str, Any]] = []
+    # Stores normalized text of accepted chunks
     seen_texts: List[str] = []
 
     for item in retrieved:
