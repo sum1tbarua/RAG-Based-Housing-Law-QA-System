@@ -1,10 +1,16 @@
 '''
 rag/prompts.py
 Purpose: Strict, source-ID citation prompt to prevent fabricated citations.
+- Present the retrieved evidence in a structured format
+- Instruct the model to answer only from that evidence
+- Force source-citation behavior and refusal behavior
 '''
 
 from typing import List, Dict, Any
 
+"""
+Defines the global rules of model behavior
+"""
 
 SYSTEM_PROMPT = """
 You are a legal document assistant.

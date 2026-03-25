@@ -1,11 +1,17 @@
 """
 rag/validators.py
 Purpose: Hard checks on citations and grounding validation.
+This file answers:
+- Did the answer cite sources properly?
+- Are those cited sources supported by the cited evidence?
+- Is the answer text supported by the cited evidence?
+- Does the answer contain likely hallucinations?
 """
 
 from typing import List, Dict, Any
 import re
 
+# To ignore when computing lexical overlap, otherwise overlap scores will become artifically high
 STOPWORDS = {
     "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
     "that", "this", "is", "are", "was", "were", "be", "by", "as", "at",
@@ -14,6 +20,7 @@ STOPWORDS = {
     "every", "also", "only", "into", "than", "then", "so"
 }
 
+# Indicators of model refusal
 REFUSAL_PATTERNS = [
     "does not contain sufficient information",
     "not enough information",
@@ -27,6 +34,7 @@ REFUSAL_PATTERNS = [
     "cannot provide a sufficiently grounded answer",
 ]
 
+# It will be loaded when semantic validation is actually needed
 _EMBED_MODEL = None
 
 
@@ -42,6 +50,9 @@ def get_embedding_model():
 
 
 def is_refusal_like_sentence(text: str) -> bool:
+    """
+    Checks whether a sentence looks like a refusal by searching for any refusal pattern
+    """
     if not text:
         return False
     text_lower = text.lower()
@@ -82,8 +93,8 @@ def extract_source_ids(text: str, max_sources: int) -> List[int]:
 
 def split_into_sentences(text: str) -> List[str]:
     """
-    Lightweight sentence splitter.
-    Good enough for short RAG answers.
+    Performs lightweight sentence splitting. It separates text on punctuation 
+    boundaries like .,?,!, followed by a capital letter or citation block.
     """
     if not text:
         return []

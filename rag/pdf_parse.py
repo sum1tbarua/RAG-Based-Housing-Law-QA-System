@@ -1,6 +1,9 @@
 """
 rag/pdf_parse.py
-Purpose: Extract page-wise text to cite by page range
+Purpose: 
+- Extract raw text per page
+- Detect printed (booklet) page numbers
+- Normalize text while presering structure
 """
 
 from typing import List, Dict, Any, Optional
@@ -65,6 +68,16 @@ def normalize_page_text(raw_text: str) -> str:
 
 
 def extract_pages(pdf_path: str) -> List[Dict[str, Any]]:
+    """
+    Purposes:
+        - Uses pypdf to read the documen
+        - Iterate over pages
+        - Extract raw text
+        - Addds semantic page alignment
+        - Prepares text for chunking
+        - Store structured output
+        
+    """
     reader = PdfReader(pdf_path)
     output: List[Dict[str, Any]] = []
 
