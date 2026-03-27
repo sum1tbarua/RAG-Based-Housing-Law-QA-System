@@ -392,6 +392,30 @@ def run_single_evaluation(
                     min_semantic_support_ratio=0.50,
                 )
 
+                # Try citation repair once if validation fails
+                if not answer_validation["valid"]:
+                    repaired_output = auto_attach_fallback_citations(
+                        output,
+                        retrieved=retrieved,
+                        max_sources=len(retrieved)
+                    )
+                    repaired_output = normalize_answer_text(repaired_output)
+
+                    repaired_validation = validate_answer_with_semantic_grounding(
+                        answer_text=repaired_output,
+                        retrieved=retrieved,
+                        max_sources=len(retrieved),
+                        min_overlap_ratio=0.10,
+                        min_semantic_similarity=0.40,
+                        min_overlap_support_ratio=0.50,
+                        min_semantic_support_ratio=0.50,
+                    )
+
+                    if repaired_validation["valid"]:
+                        output = repaired_output
+                        answer_text = repaired_output
+                        answer_validation = repaired_validation
+
                 validation_reason = answer_validation.get("reason", "")
 
                 citation_valid = answer_validation.get("citation_valid", False)
@@ -423,20 +447,23 @@ def run_single_evaluation(
 
                 hallucination_detected = False
                 hallucination_risk = "not_evaluated"
-                supported_sentence_ratio = 1.0
+                supported_sentence_ratio = 0.0
 
                 weak_overlap_count = 0
                 weak_semantic_count = 0
-                avg_overlap_ratio = 1.0
-                avg_semantic_similarity = 1.0
-                overlap_support_ratio = 1.0
-                semantic_support_ratio = 1.0
+                avg_overlap_ratio = 0.0
+                avg_semantic_similarity = 0.0
+                overlap_support_ratio = 0.0
+                semantic_support_ratio = 0.0
 
                 total_sentences = len(split_into_sentences(answer_text)) if answer_text else 0
                 unsupported_sentence_count = 0
 
         else:
             validation_reason = "Model refusal detected."
+            hallucination_detected = False
+            hallucination_risk = "not_applicable"
+            supported_sentence_ratio = 0.0
 
     grounded_answer_correct = (
         (not should_refuse)

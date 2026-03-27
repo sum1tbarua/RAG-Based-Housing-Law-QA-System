@@ -151,19 +151,39 @@ def auto_attach_fallback_citations(
 ) -> str:
     """
     Smarter fallback:
-    If the model forgot all citations, attach the best-matching source
-    to each sentence based on lexical overlap with retrieved chunks.
+    Attach citations sentence-by-sentence when the model output is partially
+    or fully uncited.
 
-    This avoids blindly assigning [Source 1] to every sentence.
+    Behavior:
+    - If every non-refusal sentence already has a valid citation, leave unchanged.
+    - Otherwise, repair only the uncited sentences by assigning the best-matching
+      retrieved source based on lexical overlap.
     """
     if not answer_text or max_sources < 1 or not retrieved:
         return answer_text
 
-    # If citations already exist, leave them untouched
-    if extract_source_ids(answer_text, max_sources=max_sources):
+    sentences = split_into_sentences(answer_text)
+    if not sentences:
         return answer_text
 
-    sentences = split_into_sentences(answer_text)
+    # Only skip repair if every non-refusal sentence already has a valid citation
+    all_cited = True
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence or is_refusal_like_sentence(sentence):
+            continue
+
+        source_ids = extract_source_ids_from_sentence(
+            sentence,
+            max_sources=max_sources
+        )
+        if not source_ids:
+            all_cited = False
+            break
+
+    if all_cited:
+        return answer_text
+
     repaired = []
 
     for sentence in sentences:
@@ -171,7 +191,17 @@ def auto_attach_fallback_citations(
         if not sentence:
             continue
 
+        # Leave refusal sentences untouched
         if is_refusal_like_sentence(sentence):
+            repaired.append(sentence)
+            continue
+
+        # If this sentence already has valid citations, keep it
+        existing_ids = extract_source_ids_from_sentence(
+            sentence,
+            max_sources=max_sources
+        )
+        if existing_ids:
             repaired.append(sentence)
             continue
 
@@ -182,7 +212,7 @@ def auto_attach_fallback_citations(
         best_sid = 1
         best_score = -1.0
 
-        for sid, item in enumerate(retrieved, start=1):
+        for sid, _item in enumerate(retrieved, start=1):
             overlap_info = sentence_citation_overlap(
                 sentence=sentence_clean,
                 cited_source_ids=[sid],
@@ -596,14 +626,16 @@ def validate_answer_with_semantic_grounding(
     total_sentences = len(base_validation["sentences"])
     unsupported_union = set()
 
+    # Citation-invalid sentences are always unsupported
     for sent in base_validation["invalid_sentences"]:
         unsupported_union.add(sent["sentence"])
 
-    for sent in base_validation["weak_overlap_sentences"]:
-        unsupported_union.add(sent["sentence"])
+    # A sentence is unsupported only if BOTH lexical and semantic grounding are weak
+    weak_overlap_set = {sent["sentence"] for sent in base_validation["weak_overlap_sentences"]}
+    weak_semantic_set = {sent["sentence"] for sent in weak_semantic_sentences}
 
-    for sent in weak_semantic_sentences:
-        unsupported_union.add(sent["sentence"])
+    for sentence_text in weak_overlap_set.intersection(weak_semantic_set):
+        unsupported_union.add(sentence_text)
 
     unsupported_count = len(unsupported_union)
     supported_sentence_ratio = (
