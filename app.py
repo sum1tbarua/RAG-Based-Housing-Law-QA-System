@@ -157,7 +157,7 @@ st.markdown("""
 if "store" not in st.session_state:
     st.session_state.store = None
 if "embedding_model_name" not in st.session_state:
-    st.session_state.embedding_model_name = "all-MiniLM-L6-v2"
+    st.session_state.embedding_model_name = "BAAI/bge-base-en-v1.5"
 if "doc_loaded" not in st.session_state:
     st.session_state.doc_loaded = False
 if "chunks_count" not in st.session_state:
@@ -196,15 +196,15 @@ tab_ask, tab_eval, tab_dev = st.tabs(["Ask Questions", "Evaluation", "Developer 
 # =========================================================
 # DEFAULT CONFIGURATION
 # =========================================================
-chunk_tokens = 400
-overlap_tokens = 80
+chunk_tokens = 600
+overlap_tokens = 120
 top_k = 10
 min_score = 0.25
 show_debug = True
 max_context_chunks = 3
 retrieval_mode = "hybrid"
-semantic_weight = 0.50
-lexical_weight = 0.50
+semantic_weight = 0.65
+lexical_weight = 0.35
 
 # =========================================================
 # 5. DEVELOPER TOOLS TAB
@@ -253,7 +253,7 @@ with tab_dev:
             "Top-k retrieval",
             1,
             12,
-            12, # Default
+            10, # Default
             help="Number of candidate passages retrieved from the document before filtering and reranking."
         )
         st.caption(
@@ -264,14 +264,14 @@ with tab_dev:
         embedding_model_name = st.selectbox(
         "Embedding model",
         options=[
+            "BAAI/bge-base-en-v1.5",
             "all-MiniLM-L6-v2",
             "intfloat/e5-base-v2",
-            "BAAI/bge-base-en-v1.5",
         ],
         index=[
+            "BAAI/bge-base-en-v1.5",
             "all-MiniLM-L6-v2",
             "intfloat/e5-base-v2",
-            "BAAI/bge-base-en-v1.5",
         ].index(st.session_state.embedding_model_name),
         help="Select the embedding model used for both document chunk indexing and query retrieval."
         )
@@ -292,7 +292,7 @@ with tab_dev:
             "Semantic weight",
             0.0,
             1.0,
-            0.70,
+            0.65,
             0.05,
             help="Weight for dense semantic retrieval in hybrid mode."
         )
@@ -327,7 +327,7 @@ with tab_dev:
             "Chunks passed to LLM",
             1,
             4,
-            1,
+            3,
             help="Number of top passages provided to the language model when generating the final answer."
         )
         st.caption(
@@ -561,20 +561,44 @@ with tab_ask:
                                 )
 
                                 if not answer_validation["valid"]:
-                                    st.error("Unsafe output detected. Returning refusal.")
-                                    if show_debug:
-                                        st.caption(answer_validation["reason"])
-                                        if answer_validation["invalid_sentences"]:
-                                            st.write("Invalid / uncited sentences:")
-                                            for item in answer_validation["invalid_sentences"]:
-                                                st.write(f"- {item['sentence']}")
-
-                                    st.session_state.last_answer = (
-                                        "I cannot provide a sufficiently grounded answer from the uploaded document."
+                                    repaired_output = auto_attach_fallback_citations(
+                                        output,
+                                        retrieved=retrieved,
+                                        max_sources=len(retrieved)
                                     )
-                                    st.session_state.last_evidence = retrieved
-                                    st.session_state.last_citations = []
-                                else:
+                                    repaired_output = normalize_answer_text(repaired_output)
+
+                                    repaired_validation = validate_answer_with_semantic_grounding(
+                                        answer_text=repaired_output,
+                                        retrieved=retrieved,
+                                        max_sources=len(retrieved),
+                                        min_overlap_ratio=0.10,
+                                        min_semantic_similarity=0.40,
+                                        min_overlap_support_ratio=0.50,
+                                        min_semantic_support_ratio=0.50,
+                                    )
+
+                                    if repaired_validation["valid"]:
+                                        output = repaired_output
+                                        answer_validation = repaired_validation
+                                    else:
+                                        st.error("Unsafe output detected. Returning refusal.")
+                                        if show_debug:
+                                            st.caption(repaired_validation["reason"])
+                                            if repaired_validation["invalid_sentences"]:
+                                                st.write("Invalid / uncited sentences:")
+                                                for item in repaired_validation["invalid_sentences"]:
+                                                    st.write(f"- {item['sentence']}")
+
+                                        st.session_state.last_answer = (
+                                            "I cannot provide a sufficiently grounded answer from the uploaded document."
+                                        )
+                                        st.session_state.last_evidence = retrieved
+                                        st.session_state.last_citations = []
+                                        output = None
+                                        answer_validation = None
+
+                                if output is not None and answer_validation is not None:
                                     cited_ids = answer_validation["all_source_ids"]
 
                                     mapped_citations = []
@@ -594,6 +618,7 @@ with tab_ask:
                                     st.session_state.last_answer = output
                                     st.session_state.last_evidence = retrieved
                                     st.session_state.last_citations = mapped_citations
+
                             else:
                                 # Validation OFF: accept generated answer directly after citation repair
                                 st.session_state.last_answer = output
@@ -610,8 +635,8 @@ with tab_ask:
                                         "pdf_page_end": meta.get("pdf_page_end"),
                                         "score": round(r["score"], 4)
                                     })
-
                                 st.session_state.last_citations = fallback_citations
+
 
         if st.session_state.last_answer:
             st.markdown("### Answer")
@@ -687,7 +712,7 @@ with tab_ask:
               
             st.markdown("### Full Retrieved Chunks")
             for i, item in enumerate(st.session_state.last_evidence):
-                page = item["metadata"].get("printed_page_start")
+                page = item["metadata"].get("printed_page_start") or item["metadata"].get("pdf_page_start")
                 score = round(item.get("score", 0), 3)
                 with st.expander(f"Chunk {i+1} — Page {page} (Score {score})"):
                     st.write(item["text"])  

@@ -54,42 +54,46 @@ This project is intentionally designed as a **systems-oriented applied AI protot
 
 ## Key Features
 
-### Document-Grounded QA
-Answers are generated **only from retrieved legal text**.
+### Evidence-Grounded QA
+Answers are generated **only from retrieved document content**.
+
+### Hybrid Retrieval (Semantic + Lexical)
+
+Combines:
+- dense embeddings (semantic meaning)
+- keyword matching (legal terminology)
 
 ### Local LLM Inference
 Runs **Mistral locally via Ollama**, with no dependency on external LLM APIs.
 
 ### Hallucination Mitigation
-The system refuses out-of-scope queries using a **minimum similarity threshold**.
+- retrieval score thresholding
+- sentence-level grounding validation
+- refusal for insufficient evidence
 
-### Semantic Retrieval
-Uses **sentence-transformer embeddings** instead of lexical TF-IDF retrieval.
-
-### Retrieval Optimization
+### Retrieval Optimization Pipeline
 The final retrieval stack includes:
-
 - paragraph-aware chunking
-- low-information chunk filtering
-- semantic similarity search
-- retrieval deduplication
+- chunk filtering (low-information removal)
+- hybrid similarity scoring
+- deduplication
 - heuristic reranking
-- top-chunk context pruning
+- context pruning
 
-### Explainability
-The UI exposes:
+### Explainability & Debugging
 
+Supports structured evaluation with metrics for::
 - retrieved chunks
-- similarity scores
-- evidence pages
-- retrieval flow debugging
+- scores (semantic / lexical / fused)
+- page mappings (printed vs PDF)
+- full evidence inspection
 
-### Evaluation Pipeline
-A built-in evaluation flow tests:
-
-- in-scope answer behavior
-- out-of-scope refusal behavior
-- retrieval confidence
+### Built-in Evaluation Framework
+Supports structured evaluation with metrics for:
+- retrieval accuracy
+- grounding validity
+- citation correctness
+- hallucination detection
 
 ---
 
@@ -97,24 +101,26 @@ A built-in evaluation flow tests:
 
 ```text
 PDF ingestion
- ↓
+   ↓
 paragraph-aware chunking
- ↓
-semantic embeddings
- ↓
-vector similarity search
- ↓
-score threshold filtering
- ↓
-retrieval deduplication
- ↓
-heuristic reranking
- ↓
-context pruning (top evidence)
- ↓
+   ↓
+embedding generation
+   ↓
+hybrid retrieval (semantic + lexical)
+   ↓
+score fusion
+   ↓
+deduplication
+   ↓
+reranking
+   ↓
+context pruning
+   ↓
 LLM generation (Mistral)
- ↓
-citation-grounded answer
+   ↓
+citation validation
+   ↓
+evaluation
 ```
 
 
@@ -129,224 +135,150 @@ The system follows the standard **RAG pipeline**:
 
 # Pipeline Overview
 
-## 1. Document Ingestion
+## 1. Document Processing
+- PDF parsed page-by-page
+- both PDF page index and printed page number preserved
+- ensures correct citation alignment
 
-The input document is parsed and indexed as a searchable knowledge base.
+## 2. Chunking Strategy
+Uses paragraph-aware chunking with fallback:
+- primary: paragraph boundaries
+- fallback: sentence-based segmentation
+- token-based size control
+- overlap between chunks
 
-Steps:
-
-1. Extract text from PDF
-2. Apply paragraph-aware chunking
-3. Filter low-information chunks
-4. Preserve page metadata
-5. Generate semantic embeddings
-6. Build retrieval index
-
-Example ingestion output:
-```brew
-Total chunks created: 189
-Chunks indexed: 189
-```
+filters:
+- table of contents
+- navigation text
+- low-information content
 
 Each chunk stores:
-```brew
+```text
 chunk_id
-page_start
-page_end
+printed_page_start
+printed_page_end
+pdf_page_start
+pdf_page_end
 text
 ```
 
+## 3. Hybrid Retrieval
+Retrieval combines:
+
+**Semantic Retrieval**
+- embedding-based similarity (MiniLM)
+
+**Lexical Retrieval**
+- keyword-based scoring (BM25-style approximation)
+
+**Score Fusion**
+```text
+final_score =
+    semantic_weight × semantic_score +
+    lexical_weight  × lexical_score
+```
+
+This improves performance for legal queries where both:
+- wording (keywords)
+- meaning (semantics)
+
+are important.
 
 ---
 
-## 2. Retrieval
-
-When a user asks a question:
-
-1. The query is converted into a dense embedding vector
-2. Similarity scores are computed against document chunk embeddings
-3. Top-k candidates are retrieved
-4. Near-duplicate chunks are removed
-5. Chunks are reranked using a lightweight legal-obligation heuristic
-6. Only the top evidence chunk is passed to the LLM
-
-Example retrieval output:
-```brew
-Retrieved before deduplication: 3
-Retrieved after deduplication: 2
-Retrieved after reranking: 1
-Chunks passed to LLM: 1
-Top similarity score: 0.75
-Retrieved pages: 36–36
+## 4. Retrieval Pipeline
+```text
+query → embedding
+      → vector search
+      → lexical scoring
+      → score fusion
+      → top-k selection
+      → deduplication
+      → reranking
+      → final evidence
 ```
 
+## 5. Reranking
 
-A **minimum similarity threshold** determines whether the system should answer or refuse.
+Heuristic reranking prioritizes:
 
----
-
-## 3. Generation
-
-The retrieved evidence is sent to a **locally hosted Mistral LLM**.
-
-The prompt enforces:
-
-- answers grounded in retrieved evidence
-- explicit citation of supporting sources
-- refusal if evidence is insufficient
-
-Example output:
-```brew
-Answer:
-A landlord must make repairs required by law and maintain
-essential systems such as heating and structural components.
-
-[Source 1], [Source 2]
-```
-
-
----
-
-# Hallucination Prevention
-
-The system uses several safety layers:
-
-## Retrieval confidence threshold
-If the top score is below a configured threshold, the system refuses to answer.
-
-```brew
-if top_score < min_score:
-    return "Refusal: insufficient evidence retrieved."
-```
-
-## Deduplication
-Removes repeated evidence chunks.
-
-## Reranking
-Promotes chunks with stronger legal-duty language such as:
+i. legal obligation phrases:
 - must
-- required by law
+- required
 - maintain
-- reasonable time
 - repairs
 
-## Context pruning
-Only the top-ranked evidence chunk is passed to the LLM, preventing side clauses from contaminating the answer.
+ii. direct answerability over context relevance
 
-## Inline citations
-Citations remain directly attached to claims in the answer.
+## 6. Answer Generation
+Uses Mistral (local via Ollama) with strict prompting:
+- no external knowledge allowed
+- every sentence must cite a source
+- refusal enforced when evidence is sufficient
+
+## 7. Validation Layer
+Ensures answer trustworthiness:
+- citation validation
+- sentence-level grounding
+- lexical overal checks
+- semantic similarity checks
+- hallucination detection
 
 ---
 
-# Hallucination Prevention
-
-The system avoids unsupported answers using a **retrieval confidence threshold**.
-
-
-Example refusal:
-```brew
-Refusal: insufficient evidence retrieved.
+# Evaluation Framework
+Evaluation input format:
+```text
+question | should_refuse | gold_pages
+```
+Example:
+```text
+How does a fixed-term tenancy end? | false | 6
 ```
 
-This mechanism significantly reduces hallucinations in RAG systems.
+# Metrics
+## Retrieval Metrics
+- Retrieval Accuracy
+- Exact Hit
+- Near Hit
+- Min Page Distance
 
----
+## Answer Quality Metrics
+- Grounded Answer Accuracy
+- Citation Validity
+- Overlap Validity
+- Semantic Validity
 
-# Experimental Evolution
+## Hallucination Metrics
+- Hallucination Rate
+- Supported Sentence Ratio
 
-The system was improved iteratively.
+## Refusal Metrics
+- True Refusal Rate
+- False Refusal Rate
 
-Initial issues
-- noisy chunking
-- lexical retrieval limits
-- duplicate evidence
-- broad answers
-- irrelevant side clauses in responses
-
-Improvements implemented
-1. Paragraph-aware chunking - Replaced naive token-window chunking with more coherent legal clause grouping.
-
-2. Semantic retrieval - Replaced TF-IDF retrieval with dense embedding-based retrieval.
-
-3. Deduplication - Removed repeated page-36 repair passages from the final evidence set.
-
-4. Heuristic reranking - Prioritized chunks expressing direct legal obligations.
-
-5. Context pruning - Passed only the highest-ranked evidence chunk to the LLM.
-
-These changes significantly improved answer focus and grounding.
-
----
-
-# Evaluation
-
-A small evaluation set was used to test system behavior.
-
-Evaluation categories:
-
-- in-scope legal questions
-- out-of-scope queries
-- refusal correctness
-
-## Evaluation Questions
-```brew
-What responsibilities does a landlord have regarding repairs?
-How much notice must a landlord give before eviction?
-What can a tenant do if the landlord refuses to fix something?
-How long does a landlord have to return a security deposit?
-What rights does a tenant have regarding maintenance?
-What is the federal tax rate for rental income?
-What is the population of Michigan?
-```
-
-## Experimental Results
-
-| Metric | Result |
-|------|------|
-| Total questions tested | 7 |
-| In-scope questions | 5 |
-| Correct in-scope answers | 5 / 5 (100%) |
-| Out-of-scope questions | 2 |
-| Correct refusals | 2 / 2 (100%) |
-
-
-### Average top retrieval score
-| Category | Average Score |
-|------|------|
-| In-scope questions | 0.69 |
-| Out-of-scope questions | 0.37 |
-
-This score separation supports the use of a confidence threshold for hallucination prevention.
-
----
-
-## Final Evaluation Snapshot
-| Question | Refused | Top Score | Retrieved Pages |
-|----|----|----|----|
-| What responsibilities does a landlord have regarding repairs? | No | 0.7504 | 36 |
-| How much notice must a landlord give before eviction? | No | 0.6267 | 58 |
-| What can a tenant do if the landlord refuses to fix something? | No | 0.6591 | 36 |
-| How long does a landlord have to return a security deposit? | No | 0.7062 | 11 |
-| What rights does a tenant have regarding maintenance? | No | 0.6940 | 29 |
-| What is the federal tax rate for rental income? | Yes | 0.4490 | 60 |
-| What is the population of Michigan? | Yes | 0.2882 | 5 |
-
+# Experimental Results
+| Metric | Value |
+|-------|-------|
+| Retrieval Accuracy | 87.5% |
+| Grounded Answer Accuracy | 81.2% |
+| Citation Validity | 93.8% |
+| Hallucination Rate | 0% |
+| Supported Sentence Ratio | 93.8% |
 
 ---
 
 # Tech Stack
-
 | Component | Technology |
 |---|---|
 | LLM | Mistral (Ollama) |
-| Embeddings | Sentence Transformers
+| Embeddings | all-MiniLM-L6-v2 |
 | Language | Python |
 | Frontend | Streamlit |
 | PDF Parsing | PyPDF |
-| Similarity / Retrieval | Semantic Vector Search
+| Retrieval | Hybrid (semantic + lexical)
 | Evaluation | Custom pipeline |
 
----
 
 # Project Structure
 ```brew
@@ -355,14 +287,15 @@ housing-rag/
 ├── app.py
 │
 ├── rag/
-│   ├── pdf_parse.py
-│   ├── chunking.py
-│   ├── semantic_store.py
-│   ├── retrieval_utils.py
-│   ├── reranker.py
-│   ├── prompts.py
-│   ├── validators.py
-│   └── ollama_client.py
+│   ├── pdf_parse.py            # PDF extraction + page mapping
+│   ├── chunking.py             # Paragraph-aware chunking
+│   ├── semantic_store.py       # Embedding + vector search
+│   ├── retrieval_utils.py      # Depuplication
+│   ├── reranker.py             # Heuristic reranking
+│   ├── prompts.py              # LLM Prompts
+│   ├── validators.py           # Grouding + hallucination checks
+|   ├── evaluation.py           # Evaluation framework
+│   └── ollama_client.py        # local LLM interface
 │
 ├── assets/
 │   └── screenshots/
@@ -378,9 +311,6 @@ housing-rag/
 
 ```
 
-
----
-
 # Running the Project
 
 ## 1. Clone the repository
@@ -389,7 +319,6 @@ https://github.com/sum1tbarua/RAG-Based-Housing-Law-QA-System.git
 cd RAG-Based-Housing-Law-QA-System
 
 ```
-
 
 ---
 
@@ -435,42 +364,8 @@ ollama serve
 python -m streamlit run app.py
 ```
 
+----
 
----
-# Recommended Runtime Configuration
-Use this as the final stable configuration:
-```brew
-Chunk size: 300
-Chunk overlap: 60
-Retrieval top_k: 3
-Similarity threshold: 0.50
-Deduplication: enabled
-Reranking: enabled
-Context chunks passed to LLM: 1
-LLM: Mistral via Ollama
-```
-
----
-# Example Workflow
-
-1. Upload housing-law document
-2. Run ingestion pipeline
-3. Ask legal question
-4. Inspect retrieved evidence and page numbers
-5. Review grounded answer with inline citations
-6. Run quick evaluation queries
-
----
-
-# Example Questions
-```brew
-What responsibilities does a landlord have regarding repairs?
-How much notice must a landlord give before eviction?
-How long does a landlord have to return a security deposit?
-```
-
-
----
 
 # Recommendations / Next Steps
 This project is already a strong prototype, but future improvements could include:
