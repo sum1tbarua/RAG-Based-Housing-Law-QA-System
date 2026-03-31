@@ -43,7 +43,7 @@ class SemanticVectorStore:
        """
        # selected embedding model
        self.model_name = model_name
-       self.model = SentenceTransformer(model_name)
+       self.model = SentenceTransformer(model_name, local_files_only=True)
        self.texts: List[str] = []
        self.metas: List[Dict[str, Any]] = []
        self.embeddings = None

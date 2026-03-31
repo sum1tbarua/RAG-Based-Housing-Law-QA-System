@@ -24,9 +24,8 @@ The system ingests a housing-law PDF, retrieves the most relevant legal passage,
 
 ---
 
-<!-- ## Demo Preview
+## Demo Preview
 
-> Add your screenshots after pushing the repo. Suggested filenames are shown below.
 
 ### Main UI
 ![Main UI](assets/screenshots/main-ui.png)
@@ -37,7 +36,7 @@ The system ingests a housing-law PDF, retrieves the most relevant legal passage,
 ### Evaluation / Debug View
 ![Evaluation View](assets/screenshots/eval-view.png)
 
---- -->
+---
 
 ## Why This Project Matters
 
@@ -260,11 +259,11 @@ How does a fixed-term tenancy end? | false | 6
 # Experimental Results
 | Metric | Value |
 |-------|-------|
-| Retrieval Accuracy | 87.5% |
-| Grounded Answer Accuracy | 81.2% |
-| Citation Validity | 93.8% |
-| Hallucination Rate | 0% |
-| Supported Sentence Ratio | 93.8% |
+| Retrieval Accuracy | 95.4% |
+| Grounded Answer Accuracy | 95.4% |
+| Citation Validity | 100% |
+| Hallucination Rate | 1.5% |
+| Supported Sentence Ratio | 99.6% |
 
 ---
 

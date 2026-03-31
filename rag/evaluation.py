@@ -20,7 +20,8 @@ from rag.validators import (
     auto_attach_single_source_citations,
     auto_attach_fallback_citations,
     normalize_answer_text,
-    split_into_sentences
+    split_into_sentences,
+    realign_answer_citations
 )
 
 
@@ -296,7 +297,7 @@ def run_single_evaluation(
     )
     top_score = retrieval_validation["top_score"]
 
-    retrieved_pages = extract_retrieved_pages(retrieved, page_scheme="printed")
+    retrieved_pages = extract_retrieved_pages(retrieved, page_scheme="pdf")
 
     page_alignment = validate_gold_page_alignment(
         retrieved_pages=retrieved_pages,
@@ -358,9 +359,17 @@ def run_single_evaluation(
                 retrieved=retrieved,
                 max_sources=len(retrieved)
             )
-
         output = normalize_answer_text(output)
-
+        
+        # Reassign each sentence to the best-matching retrieved source
+        output = realign_answer_citations(
+            output,
+            retrieved=retrieved,
+            max_sources=len(retrieved)
+        )
+        output = normalize_answer_text(output)
+        
+        
         near_refusal_patterns = [
             "not explicitly mentioned",
             "not mentioned in the sources",

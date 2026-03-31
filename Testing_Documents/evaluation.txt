@@ -1,46 +1,184 @@
+Evaluation Questions
+--------------------
+Total Questions - 140
+Total testing pdf = 12
+
+
 Test - 1
 --------
-Evaluation Questions:
-According to the tenancy definitions section, what are the two primary types of tenancies under a lease agreement? | false | 3,4 | fixed term tenancy, periodic tenancy
-In the tenancy definitions section, what does a fixed-term tenancy mean? | false | 6 | fixed term, specified period, lease duration
-According to the lease termination section, how does a fixed-term tenancy normally end? | false | 6 | automatically ends, expiration of lease, fixed term
-According to the lease termination section, what type of tenancy may arise if a tenant stays after a fixed-term lease expires without signing a new lease? | false | 6 | periodic tenancy, month to month
-In the tenancy definitions section, what is a periodic tenancy or tenancy at will? | false | 4 | periodic tenancy, continuing tenancy, month to month
-According to the termination rules, what is required to terminate a periodic tenancy? | false | 6 | notice, termination notice, periodic tenancy
-Under the Truth in Renting Act section, what happens if a lease contains a prohibited provision? | false | 7 | prohibited provision, unenforceable, tenant rights
-According to the Truth in Renting Act rules, how long does a landlord have to correct a prohibited lease provision after receiving notice? | false | 7 | 20 days, correction period
-Under the Truth in Renting Act, what damages may a tenant recover if the landlord fails to correct a prohibited provision? | false | 7 | damages, tenant recovery
-According to the security deposit law, what is the maximum security deposit a landlord may collect? | false | 9 | one and one-half months rent, security deposit limit
-According to the security deposit procedures, how long does a landlord have to return the security deposit after the tenant moves out? | false | 11,12 | 30 days, security deposit return
-According to the security deposit rules, what types of charges may legally be deducted from the tenant’s deposit? | false | 9,12 | damages, unpaid rent, utilities
-According to the move-out procedures, what must a tenant do within four days after moving out regarding their forwarding address? | false | 10 | forwarding address, four days
-Under the damage notice procedure, what must a tenant do if they dispute damages listed by the landlord? | false | 11 | dispute damages, written response
-According to the security deposit dispute rules, what happens if a tenant fails to respond to the landlord’s damage notice within seven days? | false | 11 | forfeiture, tenant loses right to dispute
-According to the maintenance responsibilities section, what duties does a landlord have regarding repair and maintenance of the rental property? | false | 28,29 | repair, maintenance, landlord responsibilities
-According to the tenant remedies section, what options may tenants have if a landlord fails to make necessary repairs? | false | 29,30 | repair rights, escrow, tenant remedies
-Under federal law referenced in the booklet, what disclosure must landlords provide about lead-based paint hazards? | false | 32,33 | lead paint disclosure, federal requirement
-According to the move-in documentation section, what document must tenants complete describing the condition of the rental unit at move-in? | false | 41,42 | inventory checklist, condition report
+What are the two primary types of tenancies under a lease agreement? | false | 3, 4
+What does a fixed-term tenancy mean? | false | 6 
+How does a fixed-term tenancy normally end? | false | 6 
+What type of tenancy may arise if a tenant stays after a fixed-term lease expires without signing a new lease? | false | 6 
+In the tenancy definitions section, what is a periodic tenancy or tenancy at will? | false | 6 
+According to the termination rules, what is required to terminate a periodic tenancy? | false | 6 
+Under the Truth in Renting Act section, what happens if a lease contains a prohibited provision? | false | 5 
+How long does a landlord have to correct a prohibited lease provision after receiving notice? | false | 5 
+What damages may a tenant recover if the landlord fails to correct a prohibited provision? | false | 5 
+According to the security deposit procedures, how long does a landlord have to return the security deposit after the tenant moves out? | false | 10
+According to the security deposit rules, what types of charges may legally be deducted from the tenant’s deposit? | false | 12
+According to the move-out procedures, what must a tenant do within four days after moving out regarding their forwarding address? | false | 10
+According to the maintenance responsibilities section, what duties does a landlord have regarding repair and maintenance of the rental property? | false | 34
+What options may tenants have if a landlord fails to make necessary repairs? | false | 5
+What disclosure must landlords provide about lead-based paint hazards? | false | 40 
+What document must tenants complete describing the condition of the rental unit at move-in? | false | 41
 What is the federal income tax rate on rental income in Michigan? | true | |
 What is the population of Michigan according to the latest census? | true | |
 
-Testing parameters:
--------------------
-1. Top-k: 6
-2. min_score: 0.40
-
-
-
-
---------------------------------------
---------------------------------------
-
 Test - 2
+---------
+What factors should a tenant consider before looking for a rental property? | false | 13, 14
+What is a recommended rule for how much of income should be spent on rent? | false | 12
+What is a security deposit and what can landlords deduct from it? | false | 39
+What information must be included in a receipt for a security deposit payment? | false | 13
+What are tenants advised to check regarding utilities before renting a property? | false | 14
+What are some key considerations related to location when choosing a rental home? | false | 15
+What are the legal requirements for smoke detectors in Indiana rental homes? | false | 17
+What is joint and several liability in a lease agreement? | false | 58
+Under Indiana law, what must a landlord do to maintain habitability in a rental property? | false | 34
+What are tenant rights regarding rent control laws in Indiana cities? | true | |
+How does Indiana law regulate short-term rentals like Airbnb for tenants? | true | |
+
+Test - 3
+---------
+What are the landlord’s responsibilities regarding maintaining a habitable rental unit? | false | 1
+What notice must be given before a utility service can be shut off? | false | 1
+Under what conditions can a landlord enter a tenant’s rental unit? | false | 1
+What are a tenant’s responsibilities regarding cleanliness and property care? | false | 1
+What must a tenant do to receive their security deposit back after moving out? | false | 2
+What are the federal tax benefits available to landlords in Indiana? | true | |
+How does Indiana law regulate rent increases year over year? | true | |
+
+Test - 4
+---------
+What are the tenant’s responsibilities for maintaining cleanliness and safety of the premises? | false | 2
+What must a tenant do regarding garbage disposal and plumbing fixtures? | false | 2
+What are the landlord’s duties for maintaining a habitable rental property? | false | 2, 3
+What must a landlord do when notified about issues with smoke alarms or carbon monoxide alarms? | false | 3
+What are some examples of “imminently dangerous conditions” that landlords must repair? | false | 5
+What responsibilities do landlords have regarding common areas in multi-family properties? | false | 4
+When does a landlord’s duty to repair begin under the law? | false | 5
+Why is written notice to the landlord important when requesting repairs? | false | 5
+Under what conditions can a tenant seek a court order to reduce rent due to needed repairs? | false | 6,7
+What are the federal tax deductions available to tenants renting in North Carolina? | true | |
+How does North Carolina law regulate rent control policies in major cities? | true | |
+
+Test - 5
 --------
-Evaluation Questions:
-Who will pay for each class of employee or board member?
-Tell me about fire protection
-What is open burning?
-Who will perform repairs to existing sidewalks and pathways?
-Is there any consequences for any provision violation?
-what if someone fails or refuses to comply with an order
+What responsibilities do tenants have regarding maintaining the rental unit? | false | 1
+What actions must a tenant take to avoid losing their security deposit when moving out? | false | 1
+What are the landlord’s obligations for maintaining rental property conditions? | false | 1
+Under what conditions must a landlord pay interest on a tenant’s security deposit? | false | 1
+What are the requirements for returning a tenant’s security deposit under Illinois law? | false | 2
+How much notice must a landlord give before increasing rent in a month-to-month lease? | false | 2
+What legal steps must a landlord follow to evict a tenant? | false | 2, 3
+What rights does a tenant have during the eviction court process? | false | 3
+What are the federal tax benefits available to tenants renting in Illinois? | true | |
+How does Illinois regulate rent control policies across different cities? | true | |
+
+Test - 6
+--------
+What are the two main types of rent regulation in New York State? | false | 4
+What conditions must be met for an apartment to fall under rent control? | false | 4
+What characteristics define rent stabilized apartments in New York City? | false | 5
+Which lease provisions are considered void under New York law? | false | 7
+What rights do rent stabilized tenants have regarding lease renewal? | false | 8
+How can a month-to-month tenancy be terminated outside New York City? | false | 8,9
+What are the rules regarding security deposits and how must landlords handle them? | false | 8
+What is the warranty of habitability and what does it guarantee to tenants? | false | 20
+What are the federal tax credits available for renters in New York State? | true | |
+How does New York regulate Airbnb short-term rental platforms for tenants? | true | |
+
+Test - 7
+---------
+What should a tenant do before signing a lease or putting down a deposit on a rental unit? | false | 1, 18
+Under what circumstances must a landlord refund an application fee or application deposit? | false | 24
+What steps should a tenant follow to request repairs under Texas law? | false | 12
+When can a tenant use the “repair and deduct” remedy, and what limits apply to it? | false | 15
+What remedies are available if a landlord retaliates against a tenant for requesting repairs or exercising tenant rights? | false | 18, 30, 31
+What are a landlord’s duties regarding locks and security devices in a rental dwelling? | false | 6
+What are the landlord’s duties and the tenant’s remedies regarding smoke detectors? | false | 21
+When must a landlord refund a security deposit or provide an itemized explanation for deductions? | false | 24
+Under what conditions may a tenant terminate a lease because of family violence or military service? | false | 24, 25
+What is the eviction procedure a landlord must follow before a tenant can be legally removed? | false | 17, 18
+Does Texas statewide law impose rent control caps on annual rent increases for private residential leases? | true | |
+What are the federal income tax deductions available to Texas tenants for paying residential rent? | true | |
+
+Test - 8
+--------
+What are the two main types of rent regulation in New York State, and how do they differ? | false | 6–8
+What conditions must be met for an apartment to be considered rent controlled? | false | 7
+What are the essential elements that must be included in a lease agreement? | false | 10
+Which lease provisions are explicitly prohibited under New York law? | false | 11
+What notice must landlords provide before increasing rent or not renewing a non-regulated lease? | false | 12
+What is the maximum late fee a landlord can charge and when is rent considered late? | false | 17
+How are rent increases determined for rent-stabilized apartments? | false | 18
+What are the rules governing security deposits, including limits and handling requirements? | false | 23
+What rights do tenants have under the warranty of habitability? | false | 38
+What legal steps must a landlord follow to evict a tenant? | false | 35–36
+What are the federal tax benefits available to tenants for paying rent in New York? | true | |
+Does New York law allow landlords to require renters to have renter’s insurance? | true | |
+
+Test - 9
+---------
+What is the Rent Stabilization Ordinance (RSO) and what does it protect tenants from? | false | 3
+Which rental units are generally covered under the RSO? | false | 3, 7
+Why was the Rent Stabilization Ordinance introduced in Los Angeles? | false | 5
+What fees can landlords pass on to tenants under the RSO? | false | 9
+What are the tenant rights listed under the “Know Your Rights” section? | false | 37
+What is required regarding the posting of the RSO Notification in rental properties? | false | 13
+What is the allowable annual rent increase under the RSO and what notice must be given? | false | 15
+Under what conditions can rent be increased without HCIDLA approval? | false | 16
+What are the categories of legal eviction reasons under the RSO? | false | 23
+What relocation assistance rights do tenants have in case of no-fault eviction? | false | 29
+What are the federal housing tax credits available to Los Angeles tenants? | true | N/A
+How does California law regulate rent control policies outside Los Angeles? | true | N/A
+What are the mortgage assistance programs available for landlords in California? | true | N/A
+
+Test - 10
+----------
+What is a lease agreement and what does it represent between a landlord and tenant? | false | 6
+Who is considered the landlord in a rental agreement? | false | 6
+What are the three main types of tenancies described in the document? | false | 6
+Are lease agreements always required to be in writing under Michigan law? | false | 7
+What information must be included in a lease agreement according to Michigan law? | false | 7
+What is a security deposit and what is its purpose? | false | 9
+What is the maximum amount a landlord can charge for a security deposit? | false | 9
+What responsibilities does a landlord have regarding maintaining the rental property? | false | 12
+What is a self-help eviction and is it allowed? | false | 13
+What are some valid reasons a landlord can evict a tenant? | false | 13–14
+What are the federal tax benefits available to landlords renting residential properties? | true | N/A
+How does rent control policy differ across major U.S. cities? | true | N/A
+
+Test - 11
+---------
+What is a rental agreement and in what forms can it exist? | false | 7
+What happens if a tenant does not have a signed rental agreement regarding notice periods? | false | 7
+Why should a tenant inspect a property before signing a rental agreement? | false | 8
+What is the purpose of a security deposit according to the document? | false | 9
+When must a landlord return a tenant’s security deposit? | false | 9
+What steps must a tenant take to ensure return of their security deposit? | false | 10
+What are the basic responsibilities of tenants under Ohio law? | false | 11
+Under what conditions can a tenant escrow rent? | false | 12
+What responsibilities does a landlord have for maintaining a rental property? | false | 13
+What are valid legal reasons for a landlord to evict a tenant? | false | 15
+What federal programs provide tax incentives for property owners renting residential units? | true | N/A
+How do eviction laws differ between Ohio and California? | true | N/A
+
+Test - 12
+----------
+Who is considered a tenant according to the document? | false | 2
+What is the definition of renting or leasing a property? | false | 2
+What are the two types of rental agreements described in the document? | false | 2
+What information is typically included in a written lease? | false | 2
+How is the rental period determined in an oral rental agreement? | false | 2
+What notice must a tenant give before moving out in a month-to-month tenancy? | false | 2
+What is meant by a tenant’s right to “quiet enjoyment”? | false | 2
+How many days’ notice must be given before initiating an eviction action? | false | 3
+What is the process a landlord must follow to evict a tenant through court? | false | 3
+What are the rules governing security deposits and their return? | false | 3
+What federal housing subsidies are available for low-income tenants in South Dakota? | true | N/A
+How do landlord-tenant laws differ between South Dakota and New York? | true | N/A
+
+
 

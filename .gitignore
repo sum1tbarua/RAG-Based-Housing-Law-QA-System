@@ -2,4 +2,4 @@
 progress/
 .DS_Store
 __pycache__
-
+experiment_runs/*
