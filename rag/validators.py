@@ -104,6 +104,55 @@ def split_into_sentences(text: str) -> List[str]:
     sentences = [s.strip() for s in sentences if s.strip()]
     return sentences
 
+def normalize_answer_text(answer_text: str) -> str:
+    """
+    Clean minor citation formatting artifacts and normalize sentence-level citation placement.
+    """
+    if not answer_text:
+        return answer_text
+
+    text = re.sub(r"\s+", " ", answer_text).strip()
+
+    # Remove citation-only fragments at sentence boundaries, e.g.:
+    # "... [Source 2]. [Source 1] Under Indiana law..."
+    text = re.sub(
+        r'([.!?])\s+\[(?:[^\]]*Source[^\]]*)\]\s+(?=[A-Z])',
+        r'\1 ',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # Remove leading orphan citations at the very beginning
+    text = re.sub(
+        r'^\s*\[(?:[^\]]*Source[^\]]*)\]\s+',
+        '',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # Collapse repeated identical trailing citation fragments
+    text = re.sub(
+        r'(\[(?:[^\]]*Source[^\]]*)\])(?:\s*\1)+',
+        r'\1',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # Remove citation-only tail fragments
+    text = re.sub(
+        r'(?:\s|^)\[(?:[^\]]*Source[^\]]*)\](?=\s*$)',
+        '',
+        text,
+        flags=re.IGNORECASE
+    ).strip()
+
+    # Normalize spacing before punctuation
+    text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+
+    # Normalize multiple punctuation marks
+    text = re.sub(r'([.!?]){2,}', r'\1', text)
+
+    return text.strip()
 
 def auto_attach_single_source_citations(answer_text: str, max_sources: int) -> str:
     """
@@ -158,6 +207,7 @@ def auto_attach_fallback_citations(
     - If every non-refusal sentence already has a valid citation, leave unchanged.
     - Otherwise, repair only the uncited sentences by assigning the best-matching
       retrieved source based on lexical overlap.
+    - Always place citations at the END of sentences.
     """
     if not answer_text or max_sources < 1 or not retrieved:
         return answer_text
@@ -196,16 +246,25 @@ def auto_attach_fallback_citations(
             repaired.append(sentence)
             continue
 
-        # If this sentence already has valid citations, keep it
+        # Remove leading orphan citations like: [Source 1] Under Indiana law...
+        sentence = re.sub(r"^\s*\[(?:[^\]]*Source[^\]]*)\]\s*", "", sentence, flags=re.IGNORECASE).strip()
+
+        # If this sentence already has valid citations, normalize placement and keep it
         existing_ids = extract_source_ids_from_sentence(
             sentence,
             max_sources=max_sources
         )
         if existing_ids:
-            repaired.append(sentence)
+            sentence_clean = strip_citations(sentence)
+            sentence_clean = re.sub(r"[.!?]+$", "", sentence_clean).strip()
+            citation_text = ", ".join(f"Source {sid}" for sid in existing_ids)
+            repaired.append(f"{sentence_clean} [{citation_text}].")
             continue
 
+        # Clean sentence before attaching fallback citation
         sentence_clean = strip_citations(sentence)
+        sentence_clean = re.sub(r"^\s*\[(?:[^\]]*Source[^\]]*)\]\s*", "", sentence_clean, flags=re.IGNORECASE).strip()
+        sentence_clean = re.sub(r"\s*\[(?:[^\]]*Source[^\]]*)\]\s*", " ", sentence_clean, flags=re.IGNORECASE)
         sentence_clean = re.sub(r"[.!?]+$", "", sentence_clean).strip()
 
         # Find best matching retrieved chunk
@@ -226,33 +285,10 @@ def auto_attach_fallback_citations(
 
         repaired.append(f"{sentence_clean} [Source {best_sid}].")
 
-    return " ".join(repaired).strip()
+    repaired_text = " ".join(repaired).strip()
+    repaired_text = normalize_answer_text(repaired_text)
+    return repaired_text
 
-
-def normalize_answer_text(answer_text: str) -> str:
-    """
-    Clean minor citation formatting artifacts.
-    """
-    if not answer_text:
-        return answer_text
-
-    text = re.sub(r'\s+', ' ', answer_text).strip()
-
-    text = re.sub(
-        r'(\[[^\]]*Source[^\]]*\]\.)\s+\[[^\]]*Source[^\]]*\]\s*$',
-        r'\1',
-        text,
-        flags=re.IGNORECASE
-    )
-
-    text = re.sub(
-        r'(?:\s|^)\[[^\]]*Source[^\]]*\](?=\s*$)',
-        '',
-        text,
-        flags=re.IGNORECASE
-    ).strip()
-
-    return text
 
 
 def strip_citations(text: str) -> str:
@@ -661,3 +697,98 @@ def validate_answer_with_semantic_grounding(
         "hallucination_risk": hallucination_risk,
         "supported_sentence_ratio": round(supported_sentence_ratio, 4),
     }
+
+
+def extract_numbers(text: str) -> List[str]:
+    if not text:
+        return []
+    return re.findall(r"\b\d+(?:\.\d+)?\b", text)
+
+
+def realign_answer_citations(
+    answer_text: str,
+    retrieved: List[Dict[str, Any]],
+    max_sources: int
+) -> str:
+    """
+    Reassign each non-refusal sentence to the best-matching retrieved source.
+
+    Stronger alignment signals:
+    - exact number match (very important for legal deadlines / amounts)
+    - lexical overlap
+    - semantic similarity
+
+    This helps when multiple retrieved chunks are topically similar,
+    but only one contains the actual answer-bearing fact.
+    """
+    if not answer_text or not retrieved or max_sources < 1:
+        return answer_text
+
+    sentences = split_into_sentences(answer_text)
+    if not sentences:
+        return answer_text
+
+    repaired = []
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        if is_refusal_like_sentence(sentence):
+            repaired.append(sentence)
+            continue
+
+        sentence_clean = strip_citations(sentence)
+        sentence_clean = re.sub(r"[.!?]+$", "", sentence_clean).strip()
+
+        sent_tokens = set(normalize_tokens(sentence_clean))
+        sent_numbers = set(extract_numbers(sentence_clean))
+
+        best_sid = 1
+        best_score = float("-inf")
+
+        for sid, item in enumerate(retrieved, start=1):
+            chunk_text = item["text"]
+
+            # 1) lexical overlap
+            overlap_info = sentence_citation_overlap(
+                sentence=sentence_clean,
+                cited_source_ids=[sid],
+                retrieved=retrieved
+            )
+            overlap_score = overlap_info["overlap_ratio"]
+
+            # 2) semantic similarity
+            semantic_score = 0.0
+            if sentence_clean and chunk_text:
+                semantic_score = semantic_similarity(sentence_clean, chunk_text)
+
+            # 3) token overlap count (raw)
+            chunk_tokens = set(normalize_tokens(chunk_text))
+            raw_token_overlap = len(sent_tokens.intersection(chunk_tokens))
+
+            # 4) number matching — VERY important for legal deadlines/amounts
+            chunk_numbers = set(extract_numbers(chunk_text))
+            matched_numbers = sent_numbers.intersection(chunk_numbers)
+            number_match_count = len(matched_numbers)
+
+            # Composite score:
+            # prioritize exact number evidence first, then lexical overlap,
+            # then semantic similarity.
+            score = (
+                3.0 * number_match_count
+                + 1.5 * overlap_score
+                + 0.75 * raw_token_overlap
+                + 0.5 * semantic_score
+            )
+
+            if score > best_score:
+                best_score = score
+                best_sid = sid
+
+        repaired.append(f"{sentence_clean} [Source {best_sid}].")
+
+    repaired_text = " ".join(repaired).strip()
+    repaired_text = normalize_answer_text(repaired_text)
+    return repaired_text
