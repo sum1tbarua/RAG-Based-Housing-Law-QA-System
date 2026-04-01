@@ -294,7 +294,8 @@ housing-rag/
 │   ├── prompts.py              # LLM Prompts
 │   ├── validators.py           # Grouding + hallucination checks
 |   ├── evaluation.py           # Evaluation framework
-│   └── ollama_client.py        # local LLM interface
+│   ├── ollama_client.py        # local LLM interface
+|   └── experiment_manager.py   # To save the evaluation results for comparison
 │
 ├── assets/
 │   └── screenshots/
@@ -305,7 +306,7 @@ housing-rag/
 |       └── DemoLive.mp4        # Live application Demo
 │
 ├── documents/
-│   └── tenantlandlord.pdf
+│   └── TestPDF documents
 │
 ├── requirements.txt
 └── README.md
