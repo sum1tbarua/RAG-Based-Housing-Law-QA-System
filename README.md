@@ -301,6 +301,8 @@ housing-rag/
 │       ├── main-ui.png
 │       ├── answer-evidence.png
 │       └── eval-view.png
+|   └── livedemo/
+|       └── DemoLive.mp4        # Live application Demo
 │
 ├── documents/
 │   └── tenantlandlord.pdf
@@ -316,7 +318,6 @@ housing-rag/
 ```brew 
 https://github.com/sum1tbarua/RAG-Based-Housing-Law-QA-System.git
 cd RAG-Based-Housing-Law-QA-System
-
 ```
 
 ---
