@@ -18,7 +18,7 @@ from rag.ollama_client import chat
 from rag.pdf_parse import extract_pages
 from rag.chunking import chunk_pages
 from rag.semantic_store import SemanticVectorStore
-from rag.prompts import SYSTEM_PROMPT, build_user_prompt
+from rag.prompts import SYSTEM_PROMPT, build_user_prompt, build_regeneration_prompt
 from rag.validators import (
     validate_retrieval_stage,
     validate_answer_with_semantic_grounding,
@@ -37,25 +37,11 @@ from rag.experiment_manager import (
     filter_runs_by_experiment_id,
 )
 from rag.retrieval_utils import deduplicate_retrieved_chunks
+from rag.pipeline import run_rag_pipeline
 from rag.reranker import rerank_chunks
 from rag.evaluation import run_rigorous_evaluation, summarize_results
 
 CHAT_MODEL = "mistral"
-
-
-def detect_refusal_like_output(text: str) -> bool:
-    if not text or not text.strip():
-        return True
-
-    normalized = " ".join(text.lower().split())
-    refusal_prefixes = [
-        "the document does not contain sufficient information",
-        "i cannot find sufficient evidence",
-        "insufficient information",
-        "there is not enough information",
-    ]
-    return any(normalized.startswith(prefix) for prefix in refusal_prefixes)
-
 
 st.set_page_config(
     page_title="Housing Law AI Assistant",
@@ -391,7 +377,7 @@ with tab_dev:
         )
         show_debug = st.checkbox(
             "Show debug evidence",
-            value=False,
+            value=True,
             help="Displays intermediate retrieval steps such as retrieved chunks, similarity scores, and reranking results."
         )
         st.caption(
@@ -433,13 +419,6 @@ with tab_ask:
                     pdf_path = tmp.name
 
                 pages = extract_pages(pdf_path)
-                # Temporary for debugging
-                # for p in pages[:60]:
-                #     print(
-                #         "pdf_page=", p["pdf_page"],
-                #         "printed_page=", p["printed_page"],
-                #         "preview=", repr(p["text"][:120])
-                #     )
                 os.unlink(pdf_path)
 
             with st.spinner("Chunking document..."):
@@ -510,195 +489,63 @@ with tab_ask:
                 if not st.session_state.doc_loaded:
                     st.warning("Please upload and ingest a document first.")
                 else:
-                    store = st.session_state.store
-
-                    expanded_query = (
-                        question
-                        + " landlord tenant law lease agreement tenancy rights obligations "
-                        + "security deposit repairs notice termination damages prohibited lease provision "
-                        + "housing act rental property duties landlord obligations tenant rights"
-                    )
-
-                    retrieved_raw = store.search(
-                        expanded_query,
+                    pipeline_result = run_rag_pipeline(
+                        question=question,
+                        store=st.session_state.store,
+                        chat_model=CHAT_MODEL,
                         top_k=top_k,
-                        mode=retrieval_mode,
+                        min_score=min_score,
+                        max_context_chunks=max_context_chunks,
+                        retrieval_mode=retrieval_mode,
                         semantic_weight=semantic_weight,
                         lexical_weight=lexical_weight,
+                        use_reranker=use_reranker,
+                        use_validation=use_validation,
+                        dedup_threshold=0.80,
+                        query_domain="housing",
+                        enable_regeneration=True,
                     )
-                    retrieved_dedup = deduplicate_retrieved_chunks(
-                        retrieved_raw,
-                        similarity_threshold=0.80
-                    )
-                    
-                    if use_reranker:
-                        retrieved_reranked = rerank_chunks(question, retrieved_dedup)
-                    else:
-                        retrieved_reranked = retrieved_dedup
-                    retrieved = retrieved_reranked[:max_context_chunks]
+
+                    retrieved = pipeline_result["retrieved"]
+                    answer_text = pipeline_result["answer_text"]
+
+                    st.session_state.last_answer = answer_text
+                    st.session_state.last_evidence = retrieved
 
                     if show_debug:
                         st.write(f"Reranker enabled: {use_reranker}")
-                        st.write(f"Retrieved before deduplication: {len(retrieved_raw)}")
-                        st.write(f"Retrieved after deduplication: {len(retrieved_dedup)}")
+                        st.write(f"Retrieved before deduplication: {len(pipeline_result['retrieved_raw'])}")
+                        st.write(f"Retrieved after deduplication: {len(pipeline_result['retrieved_dedup'])}")
                         if use_reranker:
-                            st.write(f"Retrieved after reranking: {len(retrieved_reranked)}")
+                            st.write(f"Retrieved after reranking: {len(pipeline_result['retrieved_reranked'])}")
                         st.write(f"Chunks passed to LLM: {len(retrieved)}")
+                        st.write(f"Regeneration used: {pipeline_result['regeneration_used']}")
+                        st.write(f"Validation reason: {pipeline_result['validation_reason']}")
 
-                    retrieval_validation = validate_retrieval_stage(
-                        retrieved=retrieved,
-                        min_score=min_score
-                    )
-
-                    if not retrieval_validation["valid"]:
+                    if not pipeline_result["retrieval_validation"]["valid"]:
                         st.error("Refusal: insufficient evidence retrieved.")
                         if show_debug:
-                            st.caption(retrieval_validation["reason"])
+                            st.caption(pipeline_result["retrieval_validation"]["reason"])
 
-                        st.session_state.last_answer = (
-                            "I cannot find sufficient evidence in the uploaded document to answer this question."
-                        )
-                        st.session_state.last_evidence = retrieved
+                    if pipeline_result["refused"]:
                         st.session_state.last_citations = []
                     else:
-                        user_prompt = build_user_prompt(question, retrieved)
-                        output = chat(
-                            messages=[
-                                {"role": "system", "content": SYSTEM_PROMPT},
-                                {"role": "user", "content": user_prompt}
-                            ],
-                            model=CHAT_MODEL
-                        )
+                        answer_validation = pipeline_result.get("answer_validation", {}) or {}
+                        cited_ids = answer_validation.get("all_source_ids", [])
 
-                        output = normalize_answer_text(output)
+                        mapped_citations = []
+                        for sid in cited_ids:
+                            if 1 <= sid <= len(retrieved):
+                                r = retrieved[sid - 1]
+                                meta = r["metadata"]
+                                mapped_citations.append({
+                                    "source_id": f"Source {sid}",
+                                    "pdf_page_start": meta.get("pdf_page_start"),
+                                    "pdf_page_end": meta.get("pdf_page_end"),
+                                    "score": round(r.get("score", 0.0), 4),
+                                })
 
-                        if len(retrieved) == 1:
-                            output = auto_attach_single_source_citations(
-                                output,
-                                max_sources=len(retrieved)
-                            )
-                        else:
-                            output = auto_attach_fallback_citations(
-                                output,
-                                retrieved=retrieved,
-                                max_sources=len(retrieved)
-                            )
-
-                        output = normalize_answer_text(output)
-                        
-                        output = realign_answer_citations(
-                            output,
-                            retrieved=retrieved,
-                            max_sources=len(retrieved)
-                        )
-                        output = normalize_answer_text(output)
-
-                        near_refusal_patterns = [
-                            "not explicitly mentioned",
-                            "not mentioned in the sources",
-                            "not mentioned in the document",
-                            "not stated in the sources",
-                            "not stated in the document",
-                            "not clearly stated in the sources",
-                            "not clearly stated in the document",
-                            "not provided in the sources",
-                            "not provided in the document",
-                        ]
-
-                        lower_output = output.lower()
-                        if any(p in lower_output for p in near_refusal_patterns):
-                            output = "The document does not contain sufficient information to answer this question."
-
-                        if detect_refusal_like_output(output):
-                            st.session_state.last_answer = output
-                            st.session_state.last_evidence = retrieved
-                            st.session_state.last_citations = []
-                        else:
-                            if use_validation:
-                                answer_validation = validate_answer_with_semantic_grounding(
-                                    answer_text=output,
-                                    retrieved=retrieved,
-                                    max_sources=len(retrieved),
-                                    min_overlap_ratio=0.10,
-                                    min_semantic_similarity=0.40,
-                                    min_overlap_support_ratio=0.50,
-                                    min_semantic_support_ratio=0.50,
-                                )
-
-                                if not answer_validation["valid"]:
-                                    repaired_output = auto_attach_fallback_citations(
-                                        output,
-                                        retrieved=retrieved,
-                                        max_sources=len(retrieved)
-                                    )
-                                    repaired_output = normalize_answer_text(repaired_output)
-
-                                    repaired_validation = validate_answer_with_semantic_grounding(
-                                        answer_text=repaired_output,
-                                        retrieved=retrieved,
-                                        max_sources=len(retrieved),
-                                        min_overlap_ratio=0.10,
-                                        min_semantic_similarity=0.40,
-                                        min_overlap_support_ratio=0.50,
-                                        min_semantic_support_ratio=0.50,
-                                    )
-
-                                    if repaired_validation["valid"]:
-                                        output = repaired_output
-                                        answer_validation = repaired_validation
-                                    else:
-                                        st.error("Unsafe output detected. Returning refusal.")
-                                        if show_debug:
-                                            st.caption(repaired_validation["reason"])
-                                            if repaired_validation["invalid_sentences"]:
-                                                st.write("Invalid / uncited sentences:")
-                                                for item in repaired_validation["invalid_sentences"]:
-                                                    st.write(f"- {item['sentence']}")
-
-                                        st.session_state.last_answer = (
-                                            "I cannot provide a sufficiently grounded answer from the uploaded document."
-                                        )
-                                        st.session_state.last_evidence = retrieved
-                                        st.session_state.last_citations = []
-                                        output = None
-                                        answer_validation = None
-
-                                if output is not None and answer_validation is not None:
-                                    cited_ids = answer_validation["all_source_ids"]
-
-                                    mapped_citations = []
-                                    for sid in cited_ids:
-                                        if 1 <= sid <= len(retrieved):
-                                            r = retrieved[sid - 1]
-                                            meta = r["metadata"]
-                                            mapped_citations.append({
-                                                "source_id": f"Source {sid}",
-                                                # "printed_page_start": meta.get("printed_page_start") or meta.get("pdf_page_start"),
-                                                # "printed_page_end": meta.get("printed_page_end") or meta.get("pdf_page_end"),
-                                                "pdf_page_start": meta.get("pdf_page_start"),
-                                                "pdf_page_end": meta.get("pdf_page_end"),
-                                                "score": round(r["score"], 4)
-                                            })
-
-                                    st.session_state.last_answer = output
-                                    st.session_state.last_evidence = retrieved
-                                    st.session_state.last_citations = mapped_citations
-
-                            else:
-                                # Validation OFF: accept generated answer directly after citation repair
-                                st.session_state.last_answer = output
-                                st.session_state.last_evidence = retrieved
-
-                                fallback_citations = []
-                                for sid, r in enumerate(retrieved, start=1):
-                                    meta = r["metadata"]
-                                    fallback_citations.append({
-                                        "source_id": f"Source {sid}",
-                                        "pdf_page_start": meta.get("pdf_page_start"),
-                                        "pdf_page_end": meta.get("pdf_page_end"),
-                                        "score": round(r["score"], 4)
-                                    })
-                                st.session_state.last_citations = fallback_citations
+                        st.session_state.last_citations = mapped_citations
 
 
         if st.session_state.last_answer:
@@ -947,7 +794,6 @@ with tab_eval:
                     st.warning(save_msg)
 
         st.markdown("### Detailed Results")
-
         display_columns = [
             "result",
             "question",
@@ -959,6 +805,7 @@ with tab_eval:
             "overlap_valid",
             "semantic_valid",
             "hallucination_risk",
+            "regeneration_used",
             "validation_reason",
             "answer_preview",
         ]
@@ -971,12 +818,12 @@ with tab_eval:
                 "gold_pages",
                 "retrieval_alignment_label",
                 "grounded_answer_correct",
+                "regeneration_used",
                 "validation_reason",
                 "answer_preview",
             ]
 
         display_columns = [c for c in display_columns if c in results_df.columns]
-
         st.dataframe(results_df[display_columns], use_container_width=True)
 
 
@@ -984,8 +831,6 @@ with tab_eval:
 # 8. EXPERIMENT MANAGER TAB
 # =========================================================
 with tab_exp:
-    # st.subheader("Experiment Manager")
-    # st.caption("Persist, inspect, filter, and aggregate evaluation runs by configuration.")
     st.markdown("""
             <h3 style='text-align: center;'>Experiment Manager</h3>
             <p style='text-align: center;'>
@@ -1033,6 +878,7 @@ with tab_exp:
                 "Grounded Answer Accuracy": summary.get("grounded_answer_accuracy", 0.0),
                 "Citation Validity": summary.get("citation_validity", 0.0),
                 "Hallucination Rate": summary.get("hallucination_rate", 0.0),
+                "Regeneration Rate": summary.get("regeneration_rate", 0.0),
                 "Notes": run.get("notes", ""),
             }
             runs_rows.append(row)
@@ -1044,6 +890,7 @@ with tab_exp:
             "Grounded Answer Accuracy",
             "Citation Validity",
             "Hallucination Rate",
+            "Regeneration Rate",
         ]:
             if metric_col in runs_df.columns:
                 runs_df[metric_col] = runs_df[metric_col].apply(lambda x: f"{x*100:.1f}%")
@@ -1109,10 +956,11 @@ with tab_exp:
             c11.metric("Avg Overlap Ratio", f"{filtered_summary['average_overlap_ratio']*100:.1f}%")
             c12.metric("Avg Semantic Similarity", f"{filtered_summary['average_semantic_similarity']*100:.1f}%")
 
-            c13, c14, c15 = st.columns(3)
+            c13, c14, c15, c16 = st.columns(4)
             c13.metric("Retrieval Exact Hit", f"{filtered_summary['retrieval_exact_hit_rate']*100:.1f}%")
             c14.metric("Retrieval Near Hit", f"{filtered_summary['retrieval_near_hit_rate']*100:.1f}%")
             c15.metric("Avg Min Page Distance", f"{filtered_summary['average_min_page_distance']:.2f}")
+            c16.metric("Regeneration Rate", f"{filtered_summary['regeneration_rate']*100:.1f}%")
 
             st.markdown("#### Selected Configuration — Question-Level Results")
             st.dataframe(filtered_results_df, use_container_width=True)
@@ -1166,6 +1014,7 @@ with tab_exp:
                     {"Field": "Grounded Answer Accuracy", "Experiment A": f"{run_a_summary.get('grounded_answer_accuracy', 0.0)*100:.1f}%", "Experiment B": f"{run_b_summary.get('grounded_answer_accuracy', 0.0)*100:.1f}%"},
                     {"Field": "Citation Validity", "Experiment A": f"{run_a_summary.get('citation_validity', 0.0)*100:.1f}%", "Experiment B": f"{run_b_summary.get('citation_validity', 0.0)*100:.1f}%"},
                     {"Field": "Hallucination Rate", "Experiment A": f"{run_a_summary.get('hallucination_rate', 0.0)*100:.1f}%", "Experiment B": f"{run_b_summary.get('hallucination_rate', 0.0)*100:.1f}%"},
+                    {"Field": "Regeneration Rate", "Experiment A": f"{run_a_summary.get('regeneration_rate', 0.0)*100:.1f}%", "Experiment B": f"{run_b_summary.get('regeneration_rate', 0.0)*100:.1f}%"},
                     {"Field": "True Refusal Rate", "Experiment A": f"{run_a_summary.get('true_refusal_rate', 0.0)*100:.1f}%", "Experiment B": f"{run_b_summary.get('true_refusal_rate', 0.0)*100:.1f}%"},
                     {"Field": "False Refusal Rate", "Experiment A": f"{run_a_summary.get('false_refusal_rate', 0.0)*100:.1f}%", "Experiment B": f"{run_b_summary.get('false_refusal_rate', 0.0)*100:.1f}%"},
                 ]
