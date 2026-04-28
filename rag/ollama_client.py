@@ -21,3 +21,18 @@ def chat(messages: List[Dict[str, str]], model: str = "mistral") -> str:
     )
     r.raise_for_status()
     return r.json()["message"]["content"]
+
+# def chat(messages: List[Dict[str, str]], model: str = "qwen2.5:7b-instruct") -> str:
+#     r = requests.post(
+#         f"{OLLAMA_URL}/api/chat",
+#         json={
+#             "model": model,
+#             "messages": messages,
+#             "stream": False,
+#             "options": {"temperature": 0}
+#         },
+#         timeout=300,
+#     )
+#     r.raise_for_status()
+
+#     return r.json()["message"]["content"]

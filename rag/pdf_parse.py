@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-import re
+import re, fitz
 from pypdf import PdfReader
 
 
@@ -25,16 +25,70 @@ def extract_printed_page_number(raw_text: str) -> Optional[int]:
     return None
 
 
+# def normalize_page_text(raw_text: str) -> str:
+#     if not raw_text:
+#         return ""
+
+#     text = raw_text.replace("\u00a0", " ")
+#     text = text.replace("\r", "\n")
+#     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+#     cleaned = "\n".join(lines)
+#     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+#     return cleaned.strip()
 def normalize_page_text(raw_text: str) -> str:
     if not raw_text:
         return ""
 
     text = raw_text.replace("\u00a0", " ")
     text = text.replace("\r", "\n")
+
+    # Normalize spaces inside each extracted line
     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
-    cleaned = "\n".join(lines)
+
+    repaired_lines = []
+    for line in lines:
+        if not line:
+            repaired_lines.append("")
+            continue
+
+        # Fix common PDF extraction issue:
+        # lowercase followed by uppercase without spacing: "handbookThis" -> "handbook This"
+        line = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", line)
+
+        # Fix letters followed by digits and digits followed by letters
+        line = re.sub(r"(?<=[A-Za-z])(?=\d)", " ", line)
+        line = re.sub(r"(?<=\d)(?=[A-Za-z])", " ", line)
+
+        # Fix punctuation followed immediately by a letter
+        line = re.sub(r"(?<=[.,;:!?])(?=[A-Za-z])", " ", line)
+
+        # Collapse repeated spaces
+        line = re.sub(r"\s+", " ", line).strip()
+
+        repaired_lines.append(line)
+
+    cleaned = "\n".join(repaired_lines)
+
+    # Normalize excessive blank lines
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+
     return cleaned.strip()
+
+
+def extract_text_with_pymupdf(pdf_path: str) -> List[str]:
+    """
+    Extract page text using PyMuPDF, which often preserves spacing better
+    than pypdf for PDFs with imperfect text layers.
+    """
+    doc = fitz.open(pdf_path)
+    texts = []
+
+    for page in doc:
+        text = page.get_text("text") or ""
+        texts.append(text)
+
+    doc.close()
+    return texts
 
 
 def extract_pages(pdf_path: str) -> List[Dict[str, Any]]:
@@ -46,8 +100,10 @@ def extract_pages(pdf_path: str) -> List[Dict[str, Any]]:
     except Exception:
         page_labels = None
 
+    pymupdf_texts = extract_text_with_pymupdf(pdf_path)
+    
     for i, page in enumerate(reader.pages):
-        raw = page.extract_text() or ""
+        raw = pymupdf_texts[i] if i < len(pymupdf_texts) else (page.extract_text() or "")
         printed_page = extract_printed_page_number(raw)
         text = normalize_page_text(raw)
 
